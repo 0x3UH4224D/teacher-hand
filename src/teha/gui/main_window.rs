@@ -1,7 +1,7 @@
 //
-// windows.rs
+// main_window.rs
 //
-// Copyright (C) 2017 Muhannad Alrusayni <Muhannad.Alrusayni@gmail.com>
+// Copyright (C) 2017 Muhannad Alrusayni <0x3UH4224D@gmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by

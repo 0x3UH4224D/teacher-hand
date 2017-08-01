@@ -1,5 +1,5 @@
 //
-// main.rs
+// mod.rs
 //
 // Copyright (C) 2017 Muhannad Alrusayni <0x3UH4224D@gmail.com>
 //
@@ -17,8 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-extern crate teha;
-
-fn main() {
-    teha::run();
-}
+// pub struct TehaDocument {
+//     path: PathBuf,
+//     size: euclid::Size2D<f64>,
+// }
