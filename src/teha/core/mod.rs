@@ -17,7 +17,4 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-// pub struct TehaDocument {
-//     path: PathBuf,
-//     size: euclid::Size2D<f64>,
-// }
+pub mod draw_objects;
