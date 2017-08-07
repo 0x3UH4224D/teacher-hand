@@ -21,10 +21,13 @@ extern crate gtk;
 extern crate gdk;
 extern crate gio;
 extern crate glib;
+extern crate cairo;
 extern crate gettextrs;
 extern crate euclid;
+extern crate palette;
 
 pub mod gui;
+pub mod core;
 pub mod error;
 pub mod common;
 
