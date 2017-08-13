@@ -23,8 +23,10 @@ extern crate gio;
 extern crate glib;
 extern crate cairo;
 extern crate gettextrs;
-extern crate euclid;
 extern crate palette;
+extern crate ncollide;
+extern crate nalgebra as na;
+extern crate alga;
 
 pub mod gui;
 pub mod core;

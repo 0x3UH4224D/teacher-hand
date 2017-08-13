@@ -24,8 +24,6 @@ use std::path::Path;
 use std::fmt;
 use std::error::Error;
 
-use euclid;
-
 use gtk::{self, WidgetExt, ApplicationExt, FlowBoxExt, StackExt, ButtonExt,
           EntryExt, LabelExt, FileChooserExt, SpinButtonExt, SwitchExt,
           AdjustmentExt};
