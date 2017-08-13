@@ -1,17 +1,17 @@
 //
-// draw-objects.rs
+// draw_objects.rs
 //
 // Copyright (C) 2017 Muhannad Alrusayni <0x3UH4224D@gmail.com>
 //
-// This file is free software; you can redistribute it and/or modify it
-// under the terms of the GNU Lesser General Public License as
-// published by the Free Software Foundation; either version 3 of the
-// License, or (at your option) any later version.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This file is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
@@ -27,13 +27,20 @@ use cairo;
 use gdk::{self, ModifierType, EventMotion, EventButton};
 use gtk::prelude::*;
 
-use euclid::{self, Point2D};
+use ncollide;
+use ncollide::transformation::ToPolyline;
+use na;
+use alga::linear::{Transformation, ProjectiveTransformation};
 
 use palette::{self, Rgb};
 
-type Point = euclid::Point2D<f64>;
-type Vector = euclid::Vector2D<f64>;
-type Line = euclid::Rect<f64>;
+type Point = na::Point2<f64>;
+type Vector = na::Vector2<f64>;
+type Segment = ncollide::shape::Segment2<f64>;
+type Cone = ncollide::shape::Cone<f64>;
+type Translation = na::Translation2<f64>;
+type Rotation = na::Rotation2<f64>;
+
 type RgbaColor = palette::Alpha<Rgb<f64>, f64>;
 type Context = cairo::Context;
 
@@ -51,19 +58,10 @@ pub trait Name {
 }
 
 pub trait Move {
-    fn get_mut_position(&mut self) -> &mut Point;
-    fn get_position(&self) -> &Point;
-
-    fn move_to(&mut self, pos: Point) {
-        let point = self.get_mut_position();
-        point.x += pos.x;
-        point.y += pos.y;
-    }
-
-    fn transform(&mut self, vec: Vector) {
-        let point = self.get_mut_position();
-        point.add_assign(vec);
-    }
+    fn position(&self) -> Point;
+    fn move_to(&mut self, &Point);
+    fn translate_by(&mut self, &Translation);
+    fn rotate_by(&mut self, &Rotation, &Vector);
 }
 
 pub trait Lock {
@@ -223,24 +221,166 @@ pub trait ShapeTrait: Draw + Name + Move + Lock +
 
 pub struct LineArrow {
     pub children: Vec<Box<ShapeTrait>>,
+    // ID field
     pub name: String,
+
+    // control fields
     pub lock: bool,
+
+    // draw fields
     pub visible: bool,
     pub color: RgbaColor,
-
     pub width: f64,
-    pub line_cap: cairo::LineCap,
-    pub line_join: cairo::LineJoin,
+    pub cap: cairo::LineCap,
+    pub join: cairo::LineJoin,
     pub dashes: Vec<f64>,
     pub offset: f64,
 
-    // Line
-    pub line: Line,
+    // Segment field
+    pub segment: Segment,
 
-    // these vector needed if we want to convert this line to curve
-    arrive_dir: Vector, // dir refer to direction
-    go_dir: Vector,
+    // Curve fields
     curve_like: bool,
+    // these vector needed if we want to convert this line to curve
+    go_dir: Vector, // dir refer to direction
+    arrive_dir: Vector,
+}
+
+impl LineArrow {
+    fn new(color: RgbaColor, width: f64, cap: cairo::LineCap,
+           join: cairo::LineJoin, dashes: Vec<f64>, offset: f64,
+           curve_like: bool, segment: Segment) -> Self {
+        LineArrow {
+            children: vec![],
+            name: String::new(),
+            lock: false,
+            visible: true,
+            color: color,
+            width: width,
+            cap: cap,
+            join: join,
+            dashes: dashes,
+            offset: offset,
+            segment: segment,
+            curve_like: curve_like,
+            go_dir: Vector::new(0.0, 0.0),
+            arrive_dir: Vector::new(0.0, 0.0),
+        }
+    }
+
+    fn new_from_segment(segment: Segment) -> Self {
+        LineArrow {
+            children: vec![],
+            name: String::new(),
+            lock: false,
+            visible: true,
+            color: RgbaColor::new(0.0, 0.0, 0.0, 1.0),
+            width: 90.0,
+            cap: cairo::LineCap::Round,
+            join: cairo::LineJoin::Round,
+            dashes: vec![],
+            offset: 0.0,
+            segment: segment,
+            curve_like: false,
+            go_dir: Vector::new(0.0, 0.0),
+            arrive_dir: Vector::new(0.0, 0.0),
+        }
+    }
+
+    fn draw_segment(&self, cr: &Context) {
+        cr.save();
+
+        cr.set_source_rgba(
+            self.color.color.red,
+            self.color.color.green,
+            self.color.color.blue,
+            self.color.alpha
+        );
+        cr.set_line_width(self.width);
+        cr.set_line_cap(self.cap);
+        cr.set_line_join(self.join);
+        cr.set_dash(self.dashes.as_slice(), self.offset);
+
+        let start = self.segment.a();
+        let go_dir = &self.go_dir;
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        // start point
+        cr.move_to(start.x, start.y);
+        if self.curve_like {
+            cr.curve_to(
+                // go direction
+                go_dir.x + start.x,
+                go_dir.y + start.y,
+                // arrive direction
+                arrive_dir.x + end.x,
+                arrive_dir.y + end.y,
+                // end point
+                end.x,
+                end.y);
+        } else {
+            // end point
+            cr.line_to(end.x, end.y);
+        }
+        cr.stroke();
+        cr.restore();
+    }
+
+    // TODO: Not finished.
+    fn draw_head(&self, cr: &Context) {
+        cr.save();
+        let start = self.segment.a();
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        cr.set_source_rgba(
+            self.color.color.red,
+            self.color.color.green,
+            self.color.color.blue,
+            self.color.alpha
+        );
+
+        let mut triangle = Cone::new(self.width * 1.25, self.width * 1.25).to_polyline(());
+
+        let mut rotate;
+        if self.curve_like {
+            rotate = Rotation::rotation_between(
+                &arrive_dir,
+                &Vector::new(0.0, -1.0),
+            );
+        } else {
+            // Convert @start point to Vector with @end point as it's origin.
+            let start_vec = Translation::new(-end.x, -end.y).transform_point(&start);
+            // calcualte the angle between @start_vec and our triangle.
+            rotate = Rotation::rotation_between(
+                &Vector::new(start_vec.x, start_vec.y),
+                // y = -1.0 becuse cairo/gtk invert the y-axis after drawing it.
+                &Vector::new(0.0, -1.0),
+            );
+        }
+        // we make sure that the angle is not negative value.
+        let angle = ((360_f64).to_radians() - rotate.angle())
+            .to_degrees()
+            .abs()
+            .to_radians();
+        // create a Rotation object.
+        rotate = Rotation::new(angle);
+        // rotate @triangle
+        triangle.rotate_by(&rotate);
+        // translate @triangle to end point.
+        triangle.translate_by(&Translation::new(end.x, end.y));
+
+        cr.move_to(triangle.coords()[0].x, triangle.coords()[0].y);
+        cr.line_to(triangle.coords()[1].x, triangle.coords()[1].y);
+        cr.line_to(triangle.coords()[2].x, triangle.coords()[2].y);
+        cr.close_path();
+        // cr.stroke();
+        cr.fill();
+        cr.restore();
+    }
+
+    fn draw_tail(&self, cr: &Context) {
+        // TODO
+    }
 }
 
 impl ShapeTrait for LineArrow {}
@@ -251,39 +391,9 @@ impl Draw for LineArrow {
             return;
         }
 
-        cr.save();
-
-        cr.set_source_rgba(
-            self.color.color.red,
-            self.color.color.green,
-            self.color.color.blue,
-            self.color.alpha
-        );
-        cr.set_line_width(self.width);
-        cr.set_line_cap(self.line_cap);
-        cr.set_line_join(self.line_join);
-        cr.set_dash(self.dashes.as_slice(), self.offset);
-
-        // start point
-        cr.move_to(self.line.origin.x,
-                   self.line.origin.y);
-        if self.curve_like {
-            cr.rel_curve_to(
-                // go direction
-                self.go_dir.x, self.go_dir.y,
-                // arrive direction
-                self.line.size.width + self.arrive_dir.x,
-                self.line.size.height + self.arrive_dir.y,
-                // end point
-                self.line.size.width, self.line.size.height
-            );
-        } else {
-            cr.rel_line_to(self.line.size.width, self.line.size.height);
-        }
-        // TODO: draw arrow and tail..
-
-        cr.stroke();
-        cr.restore();
+        self.draw_segment(cr);
+        self.draw_head(cr);
+        self.draw_tail(cr);
 
         // draw children if there are any.
         for child in self.children.iter() {
@@ -303,12 +413,42 @@ impl Name for LineArrow {
 }
 
 impl Move for LineArrow {
-    fn get_mut_position(&mut self) -> &mut Point {
-        &mut self.line.origin
+    // get the position/center of this line.
+    fn position(&self) -> Point {
+        na::center(self.segment.a(), self.segment.b())
     }
 
-    fn get_position(&self) -> &Point {
-        &self.line.origin
+    fn move_to(&mut self, pos: &Point) {
+        let center = self.position();
+        let mut trans = Translation::new(-center.x, -center.y);
+        let mut a = trans.transform_point(self.segment.a());
+        let mut b = trans.transform_point(self.segment.b());
+        trans = Translation::new(pos.x, pos.y);
+        a = trans.transform_point(&a);
+        b = trans.transform_point(&b);
+        self.segment = Segment::new(a, b);
+    }
+
+    fn translate_by(&mut self, trans: &Translation) {
+        let a = trans.transform_point(self.segment.a());
+        let b = trans.transform_point(self.segment.b());
+        self.segment = Segment::new(a, b);
+    }
+
+    // TODO: test origin functionality.
+    fn rotate_by(&mut self, rotate: &Rotation, origin: &Vector) {
+        let mut center = self.position() + origin;
+        let trans = Translation::new(-center.x, -center.y);
+        let mut a = trans.transform_point(self.segment.a());
+        let mut b = trans.transform_point(self.segment.b());
+
+        a = rotate.transform_point(&a);
+        b = rotate.transform_point(&b);
+
+        a = trans.inverse_transform_point(&a);
+        b = trans.inverse_transform_point(&b);
+
+        self.segment = Segment::new(a, b);
     }
 }
 
@@ -342,5 +482,6 @@ impl Container for LineArrow {
     }
 }
 
-// TODO: override default methods
-impl Event for LineArrow {}
+impl Event for LineArrow {
+    // TODO: override default methods
+}
