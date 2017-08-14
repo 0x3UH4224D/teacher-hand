@@ -34,15 +34,15 @@ use alga::linear::{Transformation, ProjectiveTransformation};
 
 use palette::{self, Rgb};
 
-type Point = na::Point2<f64>;
-type Vector = na::Vector2<f64>;
-type Segment = ncollide::shape::Segment2<f64>;
-type Cone = ncollide::shape::Cone<f64>;
-type Translation = na::Translation2<f64>;
-type Rotation = na::Rotation2<f64>;
+type Point          = na::Point2<f64>;
+type Vector         = na::Vector2<f64>;
+type Translation    = na::Translation2<f64>;
+type Rotation       = na::Rotation2<f64>;
+type Segment        = ncollide::shape::Segment2<f64>;
+type Cone           = ncollide::shape::Cone<f64>;
 
-type RgbaColor = palette::Alpha<Rgb<f64>, f64>;
-type Context = cairo::Context;
+type RgbaColor      = palette::Alpha<Rgb<f64>, f64>;
+type Context        = cairo::Context;
 
 pub trait Draw {
     fn draw(&self, cr: &Context);
@@ -226,6 +226,7 @@ pub struct LineArrow {
 
     // control fields
     pub lock: bool,
+    pub selected: bool,
 
     // draw fields
     pub visible: bool,
@@ -240,10 +241,10 @@ pub struct LineArrow {
     pub segment: Segment,
 
     // Curve fields
-    curve_like: bool,
+    pub curve_like: bool,
     // these vector needed if we want to convert this line to curve
-    go_dir: Vector, // dir refer to direction
-    arrive_dir: Vector,
+    pub go_dir: Vector, // dir refer to direction
+    pub arrive_dir: Vector,
 }
 
 impl LineArrow {
@@ -254,6 +255,7 @@ impl LineArrow {
             children: vec![],
             name: String::new(),
             lock: false,
+            selected: false,
             visible: true,
             color: color,
             width: width,
@@ -273,9 +275,10 @@ impl LineArrow {
             children: vec![],
             name: String::new(),
             lock: false,
+            selected: false,
             visible: true,
-            color: RgbaColor::new(0.0, 0.0, 0.0, 1.0),
-            width: 90.0,
+            color: RgbaColor::new(1.0, 0.0, 0.0, 1.0),
+            width: 10.0,
             cap: cairo::LineCap::Round,
             join: cairo::LineJoin::Round,
             dashes: vec![],
@@ -381,6 +384,99 @@ impl LineArrow {
     fn draw_tail(&self, cr: &Context) {
         // TODO
     }
+
+    fn draw_selected(&self, cr: &Context) {
+        cr.save();
+
+        let start = self.segment.a();
+        let go_dir = &self.go_dir;
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        let stroke_color = self.color.color.clone();
+
+        if self.curve_like {
+            cr.save();
+
+            cr.set_source_rgba(
+                stroke_color.red,
+                stroke_color.green,
+                stroke_color.blue,
+                0.3,
+            );
+            cr.set_line_width(2.0);
+            cr.set_dash(&[10.0], 0.0);
+
+            cr.move_to(start.x, start.y);
+            cr.rel_line_to(go_dir.x, go_dir.y);
+            cr.stroke();
+
+            cr.move_to(end.x, end.y);
+            cr.rel_line_to(arrive_dir.x, arrive_dir.y);
+            cr.stroke();
+
+            cr.restore();
+        }
+
+        cr.restore();
+    }
+
+    fn draw_controllers(&self, cr: &Context) {
+        cr.save();
+
+        let start = self.segment.a();
+        let go_dir = &self.go_dir;
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        let fill_color = Rgb::new(0.97, 0.97, 1.0); // #F8F8FF
+        let stroke_color = Rgb::new(0.47, 0.53, 0.60); // #778899
+
+        let radius;
+        if self.width < 10.0  {
+            radius = 3.0
+        } else if self.width > 20.0 {
+            radius = 9.0
+        } else {
+            // radius will be in range 4.0-8.0
+            radius = self.width * 0.40;
+        }
+
+        // draw @go_dir and @arrive_dir circle
+        cr.new_sub_path();
+        cr.arc(start.x + go_dir.x, start.y + go_dir.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        cr.new_sub_path();
+        cr.arc(end.x + arrive_dir.x, end.y + arrive_dir.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        // draw start and end circle
+        cr.new_sub_path();
+        cr.arc(start.x, start.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        cr.new_sub_path();
+        cr.arc(end.x, end.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        cr.set_source_rgb(
+            fill_color.red,
+            fill_color.green,
+            fill_color.blue,
+        );
+        cr.fill_preserve();
+        cr.set_source_rgb(
+            stroke_color.red,
+            stroke_color.green,
+            stroke_color.blue,
+        );
+        cr.stroke();
+
+        cr.restore();
+    }
 }
 
 impl ShapeTrait for LineArrow {}
@@ -394,6 +490,10 @@ impl Draw for LineArrow {
         self.draw_segment(cr);
         self.draw_head(cr);
         self.draw_tail(cr);
+        if self.selected {
+            self.draw_selected(cr);
+            self.draw_controllers(cr);
+        }
 
         // draw children if there are any.
         for child in self.children.iter() {
