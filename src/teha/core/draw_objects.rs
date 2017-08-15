@@ -24,7 +24,7 @@ use std::cell::RefCell;
 use std::borrow::Borrow;
 
 use cairo;
-use gdk::{self, ModifierType, EventMotion, EventButton};
+use gdk::{self, ModifierType, EventMotion, EventButton, EventType};
 use gtk::prelude::*;
 
 use ncollide;
@@ -136,9 +136,9 @@ pub trait Container {
 }
 
 pub trait Event {
-    fn motion_notify(&self, event: &EventMotion) {}
-    fn button_press(&self, event: &EventButton) {}
-    fn button_release(&self, event: &EventButton) {}
+    fn motion_notify(&mut self, event: &EventMotion) {}
+    fn button_press(&mut self, event: &EventButton) {}
+    fn button_release(&mut self, event: &EventButton) {}
 }
 
 pub struct Page {
@@ -235,6 +235,9 @@ pub struct LineArrow {
     // control fields
     pub lock: bool,
     pub selected: bool,
+    // this field for Event trait, it contains the selected controller and click
+    // position, it contains None if the user click outside the draw area.
+    selected_controller: Option<(LineArrowControllers, Point)>,
 
     // draw fields
     pub visible: bool,
@@ -264,6 +267,7 @@ impl LineArrow {
             name: String::new(),
             lock: false,
             selected: false,
+            selected_controller: None,
             visible: true,
             color: color,
             width: width,
@@ -284,8 +288,9 @@ impl LineArrow {
             name: String::new(),
             lock: false,
             selected: false,
+            selected_controller: None,
             visible: true,
-            color: RgbaColor::new(1.0, 0.0, 0.0, 1.0),
+            color: RgbaColor::new(0.0, 0.0, 0.0, 1.0),
             width: 10.0,
             cap: cairo::LineCap::Round,
             join: cairo::LineJoin::Round,
@@ -318,7 +323,60 @@ impl LineArrow {
     }
 
     fn select_controller(&self, pos: &Point) -> Option<LineArrowControllers> {
-        // TODO
+        // we create zero size image since we don't really need it, but it's
+        // required to create cairo::Context
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = &Context::new(&surface);
+
+        cr.save();
+        self.draw_start_point(cr, false);
+        if cr.in_stroke(pos.x, pos.y) {
+            return Some(LineArrowControllers::StartPoint);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_end_point(cr, false);
+        if cr.in_stroke(pos.x, pos.y) {
+            return Some(LineArrowControllers::EndPoint);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_go_direction(cr, false);
+        if cr.in_stroke(pos.x, pos.y) {
+            return Some(LineArrowControllers::GoDirection);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_arrive_direction(cr, false);
+        if cr.in_stroke(pos.x, pos.y) {
+            return Some(LineArrowControllers::ArriveDirection);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_segment(cr, false);
+        if cr.in_stroke(pos.x, pos.y) {
+            return Some(LineArrowControllers::Body);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_head(cr, false);
+        if cr.in_fill(pos.x, pos.y) {
+            return Some(LineArrowControllers::Body);
+        }
+        cr.restore();
+
+        cr.save();
+        self.draw_tail(cr, false);
+        if cr.in_fill(pos.x, pos.y) {
+            return Some(LineArrowControllers::Body);
+        }
+        cr.restore();
+
         None
     }
 
@@ -416,9 +474,15 @@ impl LineArrow {
     }
 
     fn draw_body(&self, cr: &Context, draw_it: bool) {
+        cr.save();
         self.draw_segment(cr, draw_it);
+        cr.restore();
+        cr.save();
         self.draw_head(cr, draw_it);
+        cr.restore();
+        cr.save();
         self.draw_tail(cr, draw_it);
+        cr.restore();
     }
 
     fn draw_start_point(&self, cr: &Context, draw_it: bool) {
@@ -534,6 +598,7 @@ impl LineArrow {
     }
 
     fn draw_helper_shapes(&self, cr: &Context) {
+        cr.save();
         let start = self.segment.a();
         let go_dir = &self.go_dir;
         let arrive_dir = &self.arrive_dir;
@@ -558,13 +623,22 @@ impl LineArrow {
             cr.rel_line_to(arrive_dir.x, arrive_dir.y);
             cr.stroke();
         }
+        cr.restore();
     }
 
     fn draw_controllers(&self, cr: &Context) {
+        cr.save();
         self.draw_start_point(cr, true);
+        cr.restore();
+        cr.save();
         self.draw_end_point(cr, true);
+        cr.restore();
+        cr.save();
         self.draw_go_direction(cr, true);
+        cr.restore();
+        cr.save();
         self.draw_arrive_direction(cr, true);
+        cr.restore();
     }
 }
 
@@ -669,6 +743,27 @@ impl Container for LineArrow {
     }
 }
 
+// TODO: override default methods
 impl Event for LineArrow {
-    // TODO: override default methods
+    fn button_press(&mut self, event: &EventButton) {
+        if self.lock || !self.visible {
+            return;
+        }
+
+        if event.get_event_type() == EventType::ButtonPress {
+            let position = event.get_position();
+            let position = Point::new(position.0, position.1);
+            let controller = self.select_controller(&position);
+            match controller {
+                None => {
+                    self.selected_controller = None;
+                    self.selected = false;
+                },
+                Some(val) => {
+                    self.selected_controller = Some((val, position));
+                    self.selected = true;
+                },
+            }
+        }
+    }
 }
