@@ -219,6 +219,14 @@ impl Container for Layer {
 pub trait ShapeTrait: Draw + Name + Move + Lock +
           Visible + Container + Event {}
 
+pub enum LineArrowControllers {
+    Body,
+    StartPoint,
+    EndPoint,
+    GoDirection,
+    ArriveDirection,
+}
+
 pub struct LineArrow {
     pub children: Vec<Box<ShapeTrait>>,
     // ID field
@@ -290,9 +298,31 @@ impl LineArrow {
         }
     }
 
-    fn draw_segment(&self, cr: &Context) {
-        cr.save();
+    fn radius(&self) -> f64 {
+        if self.width < 10.0  {
+            3.0
+        } else if self.width > 20.0 {
+            9.0
+        } else {
+            // radius will be in range 4.0-8.0
+            self.width * 0.40
+        }
+    }
 
+    fn fill_color(&self) -> Rgb<f64> {
+        Rgb::new(0.97, 0.97, 1.0) // #F8F8FF
+    }
+
+    fn stroke_color(&self) -> Rgb<f64> {
+        Rgb::new(0.47, 0.53, 0.60) // #778899
+    }
+
+    fn select_controller(&self, pos: &Point) -> Option<LineArrowControllers> {
+        // TODO
+        None
+    }
+
+    fn draw_segment(&self, cr: &Context, draw_it: bool) {
         cr.set_source_rgba(
             self.color.color.red,
             self.color.color.green,
@@ -325,13 +355,14 @@ impl LineArrow {
             // end point
             cr.line_to(end.x, end.y);
         }
-        cr.stroke();
-        cr.restore();
+
+        if draw_it {
+            cr.stroke();
+        }
     }
 
     // TODO: Not finished.
-    fn draw_head(&self, cr: &Context) {
-        cr.save();
+    fn draw_head(&self, cr: &Context, draw_it: bool) {
         let start = self.segment.a();
         let arrive_dir = &self.arrive_dir;
         let end = self.segment.b();
@@ -343,7 +374,6 @@ impl LineArrow {
         );
 
         let mut triangle = Cone::new(self.width * 1.25, self.width * 1.25).to_polyline(());
-
         let mut rotate;
         if self.curve_like {
             rotate = Rotation::rotation_between(
@@ -376,18 +406,134 @@ impl LineArrow {
         cr.line_to(triangle.coords()[1].x, triangle.coords()[1].y);
         cr.line_to(triangle.coords()[2].x, triangle.coords()[2].y);
         cr.close_path();
-        // cr.stroke();
-        cr.fill();
-        cr.restore();
+        if draw_it {
+            cr.fill();
+        }
     }
 
-    fn draw_tail(&self, cr: &Context) {
+    fn draw_tail(&self, cr: &Context, draw_it: bool) {
         // TODO
     }
 
-    fn draw_selected(&self, cr: &Context) {
-        cr.save();
+    fn draw_body(&self, cr: &Context, draw_it: bool) {
+        self.draw_segment(cr, draw_it);
+        self.draw_head(cr, draw_it);
+        self.draw_tail(cr, draw_it);
+    }
 
+    fn draw_start_point(&self, cr: &Context, draw_it: bool) {
+        let start = self.segment.a();
+        let fill_color = self.fill_color();
+        let stroke_color = self.stroke_color();
+        let radius = self.radius();
+
+        // draw start and end circle
+        cr.new_sub_path();
+        cr.arc(start.x, start.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        if draw_it {
+            cr.set_source_rgb(
+                fill_color.red,
+                fill_color.green,
+                fill_color.blue,
+            );
+            cr.fill_preserve();
+            cr.set_source_rgb(
+                stroke_color.red,
+                stroke_color.green,
+                stroke_color.blue,
+            );
+            cr.stroke();
+        }
+    }
+
+    fn draw_end_point(&self, cr: &Context, draw_it: bool) {
+        let end = self.segment.b();
+        let fill_color = self.fill_color();
+        let stroke_color = self.stroke_color();
+        let radius = self.radius();
+
+        cr.new_sub_path();
+        cr.arc(end.x, end.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        if draw_it {
+            cr.set_source_rgb(
+                fill_color.red,
+                fill_color.green,
+                fill_color.blue,
+            );
+            cr.fill_preserve();
+            cr.set_source_rgb(
+                stroke_color.red,
+                stroke_color.green,
+                stroke_color.blue,
+            );
+            cr.stroke();
+        }
+    }
+
+    fn draw_go_direction(&self, cr: &Context, draw_it: bool) {
+        let go_dir = &self.go_dir;
+        let start = self.segment.a();
+        let fill_color = self.fill_color();
+        let stroke_color = self.stroke_color();
+        let radius = self.radius();
+
+        // draw @go_dir and @arrive_dir circle
+        cr.new_sub_path();
+        cr.arc(start.x + go_dir.x, start.y + go_dir.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        if draw_it {
+            cr.set_source_rgb(
+                fill_color.red,
+                fill_color.green,
+                fill_color.blue,
+            );
+            cr.fill_preserve();
+            cr.set_source_rgb(
+                stroke_color.red,
+                stroke_color.green,
+                stroke_color.blue,
+            );
+            cr.stroke();
+        }
+    }
+
+    fn draw_arrive_direction(&self, cr: &Context, draw_it: bool) {
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        let fill_color = self.fill_color();
+        let stroke_color = self.stroke_color();
+        let radius = self.radius();
+
+        cr.new_sub_path();
+        cr.arc(end.x + arrive_dir.x, end.y + arrive_dir.y,
+               radius,
+               0.0, (360_f64).to_radians());
+
+        if draw_it {
+            cr.set_source_rgb(
+                fill_color.red,
+                fill_color.green,
+                fill_color.blue,
+            );
+            cr.fill_preserve();
+            cr.set_source_rgb(
+                stroke_color.red,
+                stroke_color.green,
+                stroke_color.blue,
+            );
+            cr.stroke();
+        }
+    }
+
+    fn draw_helper_shapes(&self, cr: &Context) {
         let start = self.segment.a();
         let go_dir = &self.go_dir;
         let arrive_dir = &self.arrive_dir;
@@ -395,8 +541,6 @@ impl LineArrow {
         let stroke_color = self.color.color.clone();
 
         if self.curve_like {
-            cr.save();
-
             cr.set_source_rgba(
                 stroke_color.red,
                 stroke_color.green,
@@ -413,69 +557,14 @@ impl LineArrow {
             cr.move_to(end.x, end.y);
             cr.rel_line_to(arrive_dir.x, arrive_dir.y);
             cr.stroke();
-
-            cr.restore();
         }
-
-        cr.restore();
     }
 
     fn draw_controllers(&self, cr: &Context) {
-        cr.save();
-
-        let start = self.segment.a();
-        let go_dir = &self.go_dir;
-        let arrive_dir = &self.arrive_dir;
-        let end = self.segment.b();
-        let fill_color = Rgb::new(0.97, 0.97, 1.0); // #F8F8FF
-        let stroke_color = Rgb::new(0.47, 0.53, 0.60); // #778899
-
-        let radius;
-        if self.width < 10.0  {
-            radius = 3.0
-        } else if self.width > 20.0 {
-            radius = 9.0
-        } else {
-            // radius will be in range 4.0-8.0
-            radius = self.width * 0.40;
-        }
-
-        // draw @go_dir and @arrive_dir circle
-        cr.new_sub_path();
-        cr.arc(start.x + go_dir.x, start.y + go_dir.y,
-               radius,
-               0.0, (360_f64).to_radians());
-
-        cr.new_sub_path();
-        cr.arc(end.x + arrive_dir.x, end.y + arrive_dir.y,
-               radius,
-               0.0, (360_f64).to_radians());
-
-        // draw start and end circle
-        cr.new_sub_path();
-        cr.arc(start.x, start.y,
-               radius,
-               0.0, (360_f64).to_radians());
-
-        cr.new_sub_path();
-        cr.arc(end.x, end.y,
-               radius,
-               0.0, (360_f64).to_radians());
-
-        cr.set_source_rgb(
-            fill_color.red,
-            fill_color.green,
-            fill_color.blue,
-        );
-        cr.fill_preserve();
-        cr.set_source_rgb(
-            stroke_color.red,
-            stroke_color.green,
-            stroke_color.blue,
-        );
-        cr.stroke();
-
-        cr.restore();
+        self.draw_start_point(cr, true);
+        self.draw_end_point(cr, true);
+        self.draw_go_direction(cr, true);
+        self.draw_arrive_direction(cr, true);
     }
 }
 
@@ -487,11 +576,9 @@ impl Draw for LineArrow {
             return;
         }
 
-        self.draw_segment(cr);
-        self.draw_head(cr);
-        self.draw_tail(cr);
+        self.draw_body(cr, true);
         if self.selected {
-            self.draw_selected(cr);
+            self.draw_helper_shapes(cr);
             self.draw_controllers(cr);
         }
 
