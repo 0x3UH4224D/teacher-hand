@@ -27,12 +27,14 @@ use cairo;
 use gdk::{self, ModifierType, EventMotion, EventButton, EventType};
 use gtk::prelude::*;
 
+use gettextrs::*;
+
 use ncollide;
 use ncollide::transformation::ToPolyline;
 use na;
 use alga::linear::{Transformation, ProjectiveTransformation};
 
-use palette::{self, Rgb};
+use palette::{self};
 
 type Point          = na::Point2<f64>;
 type Vector         = na::Vector2<f64>;
@@ -41,7 +43,8 @@ type Rotation       = na::Rotation2<f64>;
 type Segment        = ncollide::shape::Segment2<f64>;
 type Cone           = ncollide::shape::Cone<f64>;
 
-type RgbaColor      = palette::Alpha<Rgb<f64>, f64>;
+type RgbColor       = palette::Rgb<f64>;
+type RgbaColor      = palette::Alpha<RgbColor, f64>;
 type Context        = cairo::Context;
 
 pub trait Draw {
@@ -49,12 +52,8 @@ pub trait Draw {
 }
 
 pub trait Name {
-    fn get_mut_name(&mut self) -> &mut String;
-    fn get_name(&self) -> &String;
-
-    fn set_name(&mut self, name: &str) {
-        self.get_mut_name().clone_from(&name.to_string());
-    }
+    fn name(&self) -> &String;
+    fn set_name(&mut self, name: &str);
 }
 
 pub trait Move {
@@ -65,87 +64,96 @@ pub trait Move {
 }
 
 pub trait Lock {
-    fn get_mut_lock(&mut self) -> &mut bool;
-    fn get_lock(&self) -> &bool;
-
-    fn lock(&mut self) {
-        let lock = self.get_mut_lock();
-        if *lock == false {
-            lock.clone_from(&true);
-        }
-    }
-
-    fn unlock(&mut self) {
-        let lock = self.get_mut_lock();
-        if *lock == true {
-            lock.clone_from(&false);
-        }
-    }
-
-    fn toggle_lock(&mut self) -> bool {
-        let lock = self.get_mut_lock();
-        let mut new_val = !lock.clone();
-        lock.clone_from(&new_val);
-        new_val
-    }
+    fn is_locked(&self) -> bool;
+    fn lock(&mut self);
+    fn unlock(&mut self);
+    fn toggle_lock(&mut self) -> bool;
 }
 
 pub trait Visible {
-    fn get_mut_visible(&mut self) -> &mut bool;
-    fn get_visible(&self) -> &bool;
-
-    fn show(&mut self) {
-        let visible = self.get_mut_visible();
-        if *visible == false {
-            visible.clone_from(&true);
-        }
-    }
-
-    fn hide(&mut self) {
-        let visible = self.get_mut_visible();
-        if *visible == true {
-            visible.clone_from(&false);
-        }
-    }
-
-    fn toggle_visible(&mut self) -> bool {
-        let visible = self.get_mut_visible();
-        let mut new_val = !visible.clone();
-        visible.clone_from(&new_val);
-        new_val
-    }
+    fn is_visible(&self) -> bool;
+    fn show(&mut self);
+    fn hide(&mut self);
+    fn toggle_visible(&mut self) -> bool;
 }
 
 pub trait Container {
-    fn get_mut_children(&mut self) -> &mut Vec<Box<ShapeTrait>>;
-    fn get_children(&self) -> &Vec<Box<ShapeTrait>>;
+    fn add(&mut self, child: Box<ShapeTrait>);
+    fn remove(&mut self, index: usize) -> Option<Box<ShapeTrait>>;
+}
 
-    fn add(&mut self, child: Box<ShapeTrait>) {
-        let children = self.get_mut_children();
-        children.push(child);
-    }
+pub trait Event {
+    // like gtk::Widget events it return "TRUE to stop other handlers from
+    // being invoked for the event. FALSE to propagate the event further."
+    fn motion_notify(&mut self, event: &EventMotion) -> bool { false }
+    fn button_press(&mut self, event: &EventButton) -> bool { false }
+    fn button_release(&mut self, event: &EventButton) -> bool { false }
+}
 
-    fn remove(&mut self, index: usize) -> Option<Box<ShapeTrait>> {
-        let children = self.get_mut_children();
-        if index > children.len() {
-            None
-        } else {
-            Some(children.remove(index))
+pub struct Document {
+    pub pages: Vec<Page>,
+    page_number: usize,
+    pub name: String,
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Document {
+            pages: vec![Page::default()],
+            page_number: 0,
+            name: gettext("Unnamed Document"),
         }
     }
 }
 
-pub trait Event {
-    fn motion_notify(&mut self, event: &EventMotion) {}
-    fn button_press(&mut self, event: &EventButton) {}
-    fn button_release(&mut self, event: &EventButton) {}
+impl Draw for Document {
+    fn draw(&self, cr: &Context) {
+        self.pages[self.page_number].draw(cr);
+    }
+}
+
+impl Name for Document {
+    fn name(&self) -> &String {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+}
+
+impl Event for Document {
+    fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        self.pages[self.page_number].motion_notify(event)
+    }
+
+    fn button_press(&mut self, event: &EventButton) -> bool {
+        self.pages[self.page_number].button_press(event)
+    }
+
+    fn button_release(&mut self, event: &EventButton) -> bool {
+        self.pages[self.page_number].button_release(event)
+    }
 }
 
 pub struct Page {
     pub layers: Vec<Box<LayerTrait>>,
     pub color: Option<RgbaColor>,
-    pub border: Option<RgbaColor>,
-    pub grid: Option<RgbaColor>,
+    pub border: Option<RgbColor>,
+    pub grid: Option<RgbColor>,
+    pub name: String,
+}
+
+impl Default for Page {
+    fn default() -> Self {
+        Page {
+            layers: vec![Box::new(Layer::default())],
+            color: None,
+            border: Some(RgbColor::new(0.28, 0.28, 0.28)), // #484848
+            grid: None,
+            name: gettext("Unnamed Page"),
+        }
+    }
 }
 
 impl Draw for Page {
@@ -157,7 +165,46 @@ impl Draw for Page {
     }
 }
 
-pub trait LayerTrait: Draw + Name + Lock + Visible + Container {}
+impl Name for Page {
+    fn name(&self) -> &String {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+}
+
+impl Event for Page {
+    fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        for layer in self.layers.iter_mut() {
+            if layer.motion_notify(event) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn button_press(&mut self, event: &EventButton) -> bool {
+        for layer in self.layers.iter_mut() {
+            if layer.button_press(event) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn button_release(&mut self, event: &EventButton) -> bool {
+        for layer in self.layers.iter_mut() {
+            if layer.button_release(event) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event {}
 
 pub struct Layer {
     pub children: Vec<Box<ShapeTrait>>,
@@ -166,10 +213,25 @@ pub struct Layer {
     pub visible: bool,
 }
 
+impl Default for Layer {
+    fn default() -> Self {
+        Layer {
+            children: vec![],
+            name: gettext("Unnamed Layer"),
+            lock: false,
+            visible: true,
+        }
+    }
+}
+
 impl LayerTrait for Layer {}
 
 impl Draw for Layer {
     fn draw(&self, cr: &Context) {
+        if !self.visible {
+            return;
+        }
+
         for child in self.children.iter() {
             child.draw(cr);
         }
@@ -177,42 +239,101 @@ impl Draw for Layer {
 }
 
 impl Name for Layer {
-    fn get_mut_name(&mut self) -> &mut String {
-        &mut self.name
+    fn name(&self) -> &String {
+        &self.name
     }
 
-    fn get_name(&self) -> &String {
-        &self.name
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
     }
 }
 
 impl Lock for Layer {
-    fn get_mut_lock(&mut self) -> &mut bool {
-        &mut self.lock
+    fn is_locked(&self) -> bool {
+        self.lock
     }
 
-    fn get_lock(&self) -> &bool {
-        &self.lock
+    fn lock(&mut self) {
+        if !self.lock {
+            self.lock = true;
+        }
+    }
+
+    fn unlock(&mut self) {
+        if self.lock {
+            self.lock = false;
+        }
+    }
+
+    fn toggle_lock(&mut self) -> bool {
+        self.lock = !self.lock;
+        self.lock
     }
 }
 
 impl Visible for Layer {
-    fn get_mut_visible(&mut self) -> &mut bool {
-        &mut self.visible
+    fn is_visible(&self) -> bool {
+        self.visible
     }
 
-    fn get_visible(&self) -> &bool {
-        &self.visible
+    fn show(&mut self) {
+        if !self.visible {
+            self.visible = true;
+        }
+    }
+
+    fn hide(&mut self) {
+        if self.visible {
+            self.visible = false;
+        }
+    }
+
+    fn toggle_visible(&mut self) -> bool {
+        self.visible = !self.visible;
+        self.visible
     }
 }
 
 impl Container for Layer {
-    fn get_mut_children(&mut self) -> &mut Vec<Box<ShapeTrait>> {
-        &mut self.children
+    fn add(&mut self, child: Box<ShapeTrait>) {
+        self.children.push(child);
     }
 
-    fn get_children(&self) -> &Vec<Box<ShapeTrait>> {
-        &self.children
+    fn remove(&mut self, index: usize) -> Option<Box<ShapeTrait>> {
+        if index > self.children.len() {
+            None
+        } else {
+            Some(self.children.remove(index))
+        }
+    }
+}
+
+impl Event for Layer {
+    fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        for child in self.children.iter_mut() {
+            if child.motion_notify(event) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn button_press(&mut self, event: &EventButton) -> bool {
+        for child in self.children.iter_mut() {
+            if child.button_press(event) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn button_release(&mut self, event: &EventButton) -> bool {
+        for child in self.children.iter_mut() {
+            if child.button_release(event) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -314,12 +435,12 @@ impl LineArrow {
         }
     }
 
-    fn fill_color(&self) -> Rgb<f64> {
-        Rgb::new(0.97, 0.97, 1.0) // #F8F8FF
+    fn fill_color(&self) -> RgbColor {
+        RgbColor::new(0.97, 0.97, 1.0) // #F8F8FF
     }
 
-    fn stroke_color(&self) -> Rgb<f64> {
-        Rgb::new(0.47, 0.53, 0.60) // #778899
+    fn stroke_color(&self) -> RgbColor {
+        RgbColor::new(0.47, 0.53, 0.60) // #778899
     }
 
     fn select_controller(&self, pos: &Point) -> Option<LineArrowControllers> {
@@ -664,12 +785,12 @@ impl Draw for LineArrow {
 }
 
 impl Name for LineArrow {
-    fn get_mut_name(&mut self) -> &mut String {
-        &mut self.name
+    fn name(&self) -> &String {
+        &self.name
     }
 
-    fn get_name(&self) -> &String {
-        &self.name
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
     }
 }
 
@@ -714,40 +835,70 @@ impl Move for LineArrow {
 }
 
 impl Lock for LineArrow {
-    fn get_mut_lock(&mut self) -> &mut bool {
-        &mut self.lock
+    fn is_locked(&self) -> bool {
+        self.lock
     }
 
-    fn get_lock(&self) -> &bool {
-        &self.lock
+    fn lock(&mut self) {
+        if !self.lock {
+            self.lock = true;
+        }
+    }
+
+    fn unlock(&mut self) {
+        if self.lock {
+            self.lock = false;
+        }
+    }
+
+    fn toggle_lock(&mut self) -> bool {
+        self.lock = !self.lock;
+        self.lock
     }
 }
 
 impl Visible for LineArrow {
-    fn get_mut_visible(&mut self) -> &mut bool {
-        &mut self.visible
+    fn is_visible(&self) -> bool {
+        self.visible
     }
 
-    fn get_visible(&self) -> &bool {
-        &self.visible
+    fn show(&mut self) {
+        if !self.visible {
+            self.visible = true;
+        }
+    }
+
+    fn hide(&mut self) {
+        if self.visible {
+            self.visible = false;
+        }
+    }
+
+    fn toggle_visible(&mut self) -> bool {
+        self.visible = !self.visible;
+        self.visible
     }
 }
 
 impl Container for LineArrow {
-    fn get_mut_children(&mut self) -> &mut Vec<Box<ShapeTrait>> {
-        &mut self.children
+    fn add(&mut self, child: Box<ShapeTrait>) {
+        self.children.push(child);
     }
 
-    fn get_children(&self) -> &Vec<Box<ShapeTrait>> {
-        &self.children
+    fn remove(&mut self, index: usize) -> Option<Box<ShapeTrait>> {
+        if index > self.children.len() {
+            None
+        } else {
+            Some(self.children.remove(index))
+        }
     }
 }
 
 // TODO: override default methods
 impl Event for LineArrow {
-    fn button_press(&mut self, event: &EventButton) {
+    fn button_press(&mut self, event: &EventButton) -> bool {
         if self.lock || !self.visible {
-            return;
+            return false;
         }
 
         if event.get_event_type() == EventType::ButtonPress {
@@ -758,12 +909,15 @@ impl Event for LineArrow {
                 None => {
                     self.selected_controller = None;
                     self.selected = false;
+                    return false;
                 },
                 Some(val) => {
                     self.selected_controller = Some((val, position));
                     self.selected = true;
+                    return true;
                 },
             }
         }
+        false
     }
 }
