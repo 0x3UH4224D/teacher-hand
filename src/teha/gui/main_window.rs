@@ -39,17 +39,17 @@ pub struct TehaMainWindow {
     pub parent: gtk::ApplicationWindow,
     pub header_bar: Option<Rc<RefCell<TehaHeaderBar>>>,
     root_stack: gtk::Stack,
-    stcrim_stack: gtk::Stack,
-    edpr_stack: gtk::Stack,
-    stup_flowbox: gtk::FlowBox,
-    crwo_infobar: gtk::InfoBar,
-    crwo_infobar_title: gtk::Label,
-    crwo_infobar_description: gtk::Label,
-    crwo_file_name: gtk::Entry,
-    crwo_file_location: gtk::FileChooserButton,
-    crwo_width: gtk::SpinButton,
-    crwo_height: gtk::SpinButton,
-    crwo_transparent_background: gtk::Switch,
+    stcrim_stack: gtk::Stack,                   // start/create/import stack
+    edpr_stack: gtk::Stack,                     // editor project stack
+    stup_flowbox: gtk::FlowBox,                 // startup flowbox
+    crwo_infobar: gtk::InfoBar,                 // create work infobar
+    crwo_infobar_title: gtk::Label,             // create work infobar title
+    crwo_infobar_description: gtk::Label,       // create work infobar description
+    crwo_file_name: gtk::Entry,                 // create work file name
+    crwo_file_location: gtk::FileChooserButton, // create work file location
+    crwo_width: gtk::SpinButton,                // create work width
+    crwo_height: gtk::SpinButton,               // create work height
+    crwo_transparent_background: gtk::Switch,   // create work transparent background
 }
 
 impl TehaMainWindow {
@@ -149,20 +149,18 @@ pub struct TehaHeaderBar {
     left_stack: gtk::Stack,
     mid_stack: gtk::Stack,
     right_stack: gtk::Stack,
-    crwo_back: gtk::Button,
-    crwo_forward: gtk::Button,
+    crwo_back: gtk::Button,         // create work back
+    crwo_forward: gtk::Button,      // create work forward
 }
 
 impl TehaHeaderBar {
     fn new(app: &TehaApplication, window: &TehaMainWindow) -> Self {
-        let header_bar: gtk::HeaderBar = app.builder.get_object("main_window_headerbar").unwrap();
-        let left_stack: gtk::Stack = app.builder.get_object("left_stack").unwrap();
-        let mid_stack: gtk::Stack = app.builder.get_object("mid_stack").unwrap();
-        let right_stack: gtk::Stack = app.builder.get_object("right_stack").unwrap();
-        let crwo_back: gtk::Button = app.builder.get_object("crwo_back").unwrap();
-        let crwo_forward: gtk::Button = app.builder.get_object("crwo_forward").unwrap();
-
-        // window.parent.set_titlebar(&header_bar);
+        let header_bar: gtk::HeaderBar      = app.builder.get_object("main_window_headerbar").unwrap();
+        let left_stack: gtk::Stack          = app.builder.get_object("left_stack").unwrap();
+        let mid_stack: gtk::Stack           = app.builder.get_object("mid_stack").unwrap();
+        let right_stack: gtk::Stack         = app.builder.get_object("right_stack").unwrap();
+        let crwo_back: gtk::Button          = app.builder.get_object("crwo_back").unwrap();
+        let crwo_forward: gtk::Button       = app.builder.get_object("crwo_forward").unwrap();
 
         let mut teha_headerbar = TehaHeaderBar {
             header_bar: header_bar,
@@ -182,21 +180,21 @@ impl TehaHeaderBar {
         let header_bar = window.borrow().header_bar.as_ref().unwrap().clone();
 
         {
-            // clone crwo_back to connect it to a closure
+            // clone crwo_back to connect it to its closure
             let crwo_back = header_bar.borrow().crwo_back.clone();
 
             // clone the needed objects
             let app = app.clone();
-            let view_mode = app.borrow().last_view_mode;
 
             // connect "clicked" signal to a closure
             crwo_back.connect_clicked(move |me| {
+                let view_mode = app.borrow().last_view_mode;
                 app.borrow_mut().update_view(view_mode);
             });
         }
 
         {
-            // clone crwo_forward to connect it to a closure
+            // clone crwo_forward to connect it to its closure
             let crwo_forward = header_bar.borrow().crwo_forward.clone();
 
             // clone the needed objects
@@ -239,7 +237,7 @@ impl TehaHeaderBar {
                     },
                 };
 
-                // collect and combine info
+                // collect info
                 file_path.push(file_name.clone());
                 file_path.set_extension("teha");
                 let width = crwo_width.get_value_as_int();
@@ -252,16 +250,19 @@ impl TehaHeaderBar {
                     Ok(file) => file,
                     Err(why) => {
                         // setting the title
-                        /* TRANSLATORS: don't remove or translate <b> it's needed. note the full sentence is "Couldn't Create File" */
-                        let title1 = gettext("<b>Couldn't Create");
-                        let title2 = format!(" {} ", file_name);
-                        /* TRANSLATORS: don't remove or translate </b> it's needed. note the full sentence is "Couldn't Create File" */
-                        let title3 = gettext("File</b>");
-                        crwo_infobar_title.set_label(format!("{}{}{}", title1, title2, title3).as_str());
+                        let title = format!("{} {} {}",
+                            /* TRANSLATORS: don't remove or translate <b> it's needed. Note the full sentence is "Couldn't Create [FILE_NAME] File" */
+                            gettext("<b>Couldn't Create"),
+                            file_name,
+                            /* TRANSLATORS: don't remove or translate </b> it's needed. Note the full sentence is "Couldn't Create [FILE_NAME] File" */
+                            gettext("File</b>"));
+                        crwo_infobar_title.set_label(title.as_str());
 
                         // setting the description
-                        let description = gettext("Error");
-                        let description = format!("{} {}", description, why.description());
+                        let description = format!("{} {}",
+                            /* TRANSLATORS: this wrod will be in sentence like this "Error [ERROR_DESCRIPTION]" */
+                            gettext("Error"),
+                            why.description());
                         crwo_infobar_description.set_label(description.as_str());
                         if !crwo_infobar.get_visible() {
                             crwo_infobar.show();
@@ -281,6 +282,7 @@ impl TehaHeaderBar {
                 }
 
                 // start a new work with the information we got.
+
 
                 app.borrow_mut().update_view(ViewMode::Editing);
             });
