@@ -18,3 +18,95 @@
 //
 
 pub mod draw_objects;
+
+use std::path::PathBuf;
+
+use gdk::{EventMotion, EventButton};
+
+use self::draw_objects::{Context, Name, Page};
+use common::types::Size;
+
+pub struct Document {
+    pub pages: Vec<Page>,
+    pub page_number: usize,
+    pub path: PathBuf,
+    pub transparent: bool,
+}
+
+impl Document {
+    pub fn new(pages_number: usize, path: PathBuf, size: Size<i32>, transparent: bool) -> Self {
+        let mut pages: Vec<Page> = vec![];
+        for _ in 0..pages_number {
+            pages.push(Page::default());
+            pages.last_mut()
+                .unwrap()
+                .size.resize(size.width, size.height);
+        }
+
+        Document {
+            pages: pages,
+            page_number: 0,
+            path: path,
+            transparent: transparent,
+        }
+    }
+
+    // pub fn save(&self) -> io::Result<()> {
+        // TODO write save method
+    //     Ok(())
+    // }
+
+    // pub fn save_as(&mut self, path: PathBuf) -> io::Result<()> {
+        // TODO write save_as method
+    //     Ok(())
+    // }
+
+    pub fn draw(&self, cr: &Context) {
+        self.pages[self.page_number].draw(cr);
+    }
+
+    pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        self.pages[self.page_number].motion_notify(event)
+    }
+
+    pub fn button_press(&mut self, event: &EventButton) -> bool {
+        self.pages[self.page_number].button_press(event)
+    }
+
+    pub fn button_release(&mut self, event: &EventButton) -> bool {
+        self.pages[self.page_number].button_release(event)
+    }
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Document {
+            pages: vec![Page::default()],
+            page_number: 0,
+            path: PathBuf::new(),
+            transparent: true,
+        }
+    }
+}
+
+impl Name for Document {
+    fn name(&self) -> &str {
+        if self.path.is_file() {
+            let file_name = match self.path.file_name() {
+                Some(val) => val,
+                None => return "",
+            };
+            let file_name = match file_name.to_str() {
+                Some(val) => val,
+                None => return "",
+            };
+            file_name
+        } else {
+            return "";
+        }
+    }
+
+    fn set_name(&mut self, name: &str) {
+        self.path.set_file_name(name);
+    }
+}

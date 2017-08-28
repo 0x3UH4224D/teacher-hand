@@ -26,20 +26,19 @@ use gtk::{self, ApplicationExt, WidgetExt};
 use gio::{self, SimpleAction, SimpleActionExt, ActionMapExt, MenuExt};
 
 use super::*;
-use super::main_window::TehaMainWindow;
+use super::main_window::MainWindow;
 
-pub struct TehaApplication {
+pub struct Application {
     pub parent: gtk::Application,
     pub builder: gtk::Builder,
     pub settings: gio::Settings,
-    pub main_window: Option<Rc<RefCell<TehaMainWindow>>>,
+    pub main_window: Option<Rc<RefCell<MainWindow>>>,
     pub shortcuts_window: gtk::ShortcutsWindow,
-    pub current_tool: CurrentTool,
     pub view_mode: ViewMode,
     pub last_view_mode: ViewMode,
 }
 
-impl TehaApplication {
+impl Application {
     pub fn new(app: gtk::Application) -> Rc<RefCell<Self>> {
         let settings = gio::Settings::new("org.muhannad.teacher-hand.application");
 
@@ -50,31 +49,30 @@ impl TehaApplication {
 
         let shortcuts_window: gtk::ShortcutsWindow = builder.get_object("shortcuts-window").unwrap();
 
-        shortcuts_window.connect_delete_event(|window, event| {
+        shortcuts_window.connect_delete_event(|window, _event| {
             window.hide_on_delete();
             gtk::Inhibit(true)
         });
 
-        let mut teha_app = TehaApplication {
+        let mut teha_app = Application {
             parent: app,
             builder: builder,
             main_window: None,
             shortcuts_window: shortcuts_window,
             settings: settings,
-            current_tool: CurrentTool::Tool(Tool::Controller),
             view_mode: ViewMode::StartUp,
             last_view_mode: ViewMode::StartUp,
         };
 
-        let main_window = TehaMainWindow::new(&teha_app);
+        let main_window = MainWindow::new(&teha_app);
         teha_app.main_window = Some(Rc::new(RefCell::new(main_window)));
 
         teha_app.setup_app_menu();
 
         let rc_app = Rc::new(RefCell::new(teha_app));
 
-        TehaApplication::setup_actions(rc_app.clone());
-        TehaApplication::connect_ui(rc_app.clone());
+        Application::setup_actions(rc_app.clone());
+        Application::connect_ui(rc_app.clone());
 
         {
             let rc_app = rc_app.borrow();
@@ -127,7 +125,7 @@ impl TehaApplication {
             let teha_app = app.borrow_mut();
             let gtk_app = teha_app.parent.clone();
             let action = SimpleAction::new("quit", None);
-            action.connect_activate(move |action, data| {
+            action.connect_activate(move |_action, _data| {
                 gtk_app.quit();
             });
             teha_app.parent.add_action(&action);
@@ -150,7 +148,7 @@ impl TehaApplication {
             let teha_app = app.borrow_mut();
             let shortcuts_window = teha_app.shortcuts_window.clone();
             let action = SimpleAction::new("shortcuts", None);
-            action.connect_activate(move |action, data| {
+            action.connect_activate(move |_action, _me| {
                 shortcuts_window.show();
             });
             teha_app.parent.add_action(&action);
@@ -158,7 +156,7 @@ impl TehaApplication {
         }
     }
 
-    fn connect_ui(app: Rc<RefCell<TehaApplication>>) {
-        TehaMainWindow::connect_ui(app.clone());
+    fn connect_ui(app: Rc<RefCell<Application>>) {
+        MainWindow::connect_ui(app.clone());
     }
 }

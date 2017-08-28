@@ -20,60 +20,84 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fs::File;
-use std::path::Path;
-use std::fmt;
 use std::error::Error;
 
 use gtk::{self, WidgetExt, ApplicationExt, FlowBoxExt, StackExt, ButtonExt,
           EntryExt, LabelExt, FileChooserExt, SpinButtonExt, SwitchExt,
-          AdjustmentExt};
-use gio::{self};
+          ScaleExt};
+use gtk::prelude::*;
 
 use gettextrs::*;
 
 use super::*;
-use super::app::TehaApplication;
+use super::app::Application;
 use common;
+use common::types::Size;
+use core::{Document};
 
-pub struct TehaMainWindow {
+// note: acronyms names used here refer to:
+// stcrim: start_create_import
+// edpr: editor_project
+// stup: start_up
+// crwo: create_work
+pub struct MainWindow {
     pub parent: gtk::ApplicationWindow,
-    pub header_bar: Option<Rc<RefCell<TehaHeaderBar>>>,
+    pub header_bar: Option<Rc<RefCell<HeaderBar>>>,
+    pub drawing_area: Option<Rc<RefCell<DrawingArea>>>,
+    pub documents: Vec<Document>,
+    current_document: usize,
     root_stack: gtk::Stack,
-    stcrim_stack: gtk::Stack,                   // start/create/import stack
-    edpr_stack: gtk::Stack,                     // editor project stack
-    stup_flowbox: gtk::FlowBox,                 // startup flowbox
-    crwo_infobar: gtk::InfoBar,                 // create work infobar
-    crwo_infobar_title: gtk::Label,             // create work infobar title
-    crwo_infobar_description: gtk::Label,       // create work infobar description
-    crwo_file_name: gtk::Entry,                 // create work file name
-    crwo_file_location: gtk::FileChooserButton, // create work file location
-    crwo_width: gtk::SpinButton,                // create work width
-    crwo_height: gtk::SpinButton,               // create work height
-    crwo_transparent_background: gtk::Switch,   // create work transparent background
+    stcrim_stack: gtk::Stack,
+    edpr_stack: gtk::Stack,
+    stup_flowbox: gtk::FlowBox,
+    crwo_infobar: gtk::InfoBar,
+    crwo_infobar_title: gtk::Label,
+    crwo_infobar_description: gtk::Label,
+    crwo_file_name: gtk::Entry,
+    crwo_file_location: gtk::FileChooserButton,
+    crwo_width: gtk::SpinButton,
+    crwo_height: gtk::SpinButton,
+    crwo_transparent_background: gtk::Switch,
 }
 
-impl TehaMainWindow {
-    pub fn new(app: &TehaApplication) -> Self {
-        let main_window: gtk::ApplicationWindow             = app.builder.get_object("main_window").unwrap();
-        let root_stack: gtk::Stack                          = app.builder.get_object("root_stack").unwrap();
-        let stcrim_stack: gtk::Stack                        = app.builder.get_object("stcrim_stack").unwrap();
-        let edpr_stack: gtk::Stack                          = app.builder.get_object("edpr_stack").unwrap();
-        let stup_flowbox: gtk::FlowBox                      = app.builder.get_object("stup_flowbox").unwrap();
-        let crwo_infobar: gtk::InfoBar                      = app.builder.get_object("crwo_infobar").unwrap();
-        let crwo_infobar_title: gtk::Label                  = app.builder.get_object("crwo_infobar_title").unwrap();
-        let crwo_infobar_description: gtk::Label            = app.builder.get_object("crwo_infobar_description").unwrap();
-        let crwo_file_name: gtk::Entry                      = app.builder.get_object("crwo_file_name").unwrap();
-        let crwo_file_location: gtk::FileChooserButton      = app.builder.get_object("crwo_file_location").unwrap();
-        let crwo_width: gtk::SpinButton                     = app.builder.get_object("crwo_width").unwrap();
-        let crwo_height: gtk::SpinButton                    = app.builder.get_object("crwo_height").unwrap();
-        let crwo_transparent_background: gtk::Switch        = app.builder.get_object("crwo_transparent_background").unwrap();
+impl MainWindow {
+    pub fn new(app: &Application) -> Self {
+        let main_window: gtk::ApplicationWindow =
+            app.builder.get_object("main_window").unwrap();
+        let root_stack: gtk::Stack =
+            app.builder.get_object("root_stack").unwrap();
+        let stcrim_stack: gtk::Stack =
+            app.builder.get_object("stcrim_stack").unwrap();
+        let edpr_stack: gtk::Stack =
+            app.builder.get_object("edpr_stack").unwrap();
+        let stup_flowbox: gtk::FlowBox =
+            app.builder.get_object("stup_flowbox").unwrap();
+        let crwo_infobar: gtk::InfoBar =
+            app.builder.get_object("crwo_infobar").unwrap();
+        let crwo_infobar_title: gtk::Label =
+            app.builder.get_object("crwo_infobar_title").unwrap();
+        let crwo_infobar_description: gtk::Label =
+            app.builder.get_object("crwo_infobar_description").unwrap();
+        let crwo_file_name: gtk::Entry =
+            app.builder.get_object("crwo_file_name").unwrap();
+        let crwo_file_location: gtk::FileChooserButton =
+            app.builder.get_object("crwo_file_location").unwrap();
+        let crwo_width: gtk::SpinButton =
+            app.builder.get_object("crwo_width").unwrap();
+        let crwo_height: gtk::SpinButton =
+            app.builder.get_object("crwo_height").unwrap();
+        let crwo_transparent_background: gtk::Switch =
+            app.builder.get_object("crwo_transparent_background").unwrap();
 
         crwo_file_name.set_max_length(63);
         app.parent.add_window(&main_window);
 
-        let mut teha_window = TehaMainWindow {
+        let mut teha_window = MainWindow {
             parent: main_window,
             header_bar: None,
+            drawing_area: None,
+            documents: vec![],
+            current_document: 0,
             root_stack: root_stack,
             stcrim_stack: stcrim_stack,
             edpr_stack: edpr_stack,
@@ -88,8 +112,11 @@ impl TehaMainWindow {
             crwo_transparent_background: crwo_transparent_background,
         };
 
-        let header_bar = TehaHeaderBar::new(app, &teha_window);
+        let header_bar = HeaderBar::new(app);
         teha_window.header_bar = Some(Rc::new(RefCell::new(header_bar)));
+
+        let drawing_area = DrawingArea::new(app);
+        teha_window.drawing_area = Some(Rc::new(RefCell::new(drawing_area)));
 
         teha_window
     }
@@ -121,16 +148,17 @@ impl TehaMainWindow {
         }
     }
 
-    // pub fn new_work()
+    pub fn new_documents(&mut self, document: Document) {
+        self.documents.push(document);
+    }
 
-    pub fn connect_ui(app: Rc<RefCell<TehaApplication>>) {
+    pub fn connect_ui(app: Rc<RefCell<Application>>) {
         let teha_app = app.borrow();
         let window = teha_app.main_window.as_ref().unwrap().borrow();
-        let header_bar = window.header_bar.as_ref().unwrap().clone();
         {
             let app = app.clone();
             let stup_flowbox = window.stup_flowbox.clone();
-            stup_flowbox.connect_child_activated(move |me, child| {
+            stup_flowbox.connect_child_activated(move |_me, child| {
                 let button_name = child.get_name().unwrap();
                 if button_name == "startup_new_work_button" {
                     app.borrow_mut().update_view(ViewMode::CreatingWork);
@@ -140,41 +168,52 @@ impl TehaMainWindow {
             });
         }
 
-        TehaHeaderBar::connect_ui(app.clone());
+        HeaderBar::connect_ui(app.clone());
+        DrawingArea::connect_ui(app.clone());
     }
 }
 
-pub struct TehaHeaderBar {
-    pub header_bar: gtk::HeaderBar,
+pub struct HeaderBar {
+    pub parent: gtk::HeaderBar,
     left_stack: gtk::Stack,
     mid_stack: gtk::Stack,
     right_stack: gtk::Stack,
     crwo_back: gtk::Button,         // create work back
     crwo_forward: gtk::Button,      // create work forward
+    ed_zoom_level: gtk::Scale,      // editor zoom level
 }
 
-impl TehaHeaderBar {
-    fn new(app: &TehaApplication, window: &TehaMainWindow) -> Self {
-        let header_bar: gtk::HeaderBar      = app.builder.get_object("main_window_headerbar").unwrap();
-        let left_stack: gtk::Stack          = app.builder.get_object("left_stack").unwrap();
-        let mid_stack: gtk::Stack           = app.builder.get_object("mid_stack").unwrap();
-        let right_stack: gtk::Stack         = app.builder.get_object("right_stack").unwrap();
-        let crwo_back: gtk::Button          = app.builder.get_object("crwo_back").unwrap();
-        let crwo_forward: gtk::Button       = app.builder.get_object("crwo_forward").unwrap();
+impl HeaderBar {
+    fn new(app: &Application) -> Self {
+        let header_bar: gtk::HeaderBar =
+            app.builder.get_object("main_window_headerbar").unwrap();
+        let left_stack: gtk::Stack =
+            app.builder.get_object("left_stack").unwrap();
+        let mid_stack: gtk::Stack =
+            app.builder.get_object("mid_stack").unwrap();
+        let right_stack: gtk::Stack =
+            app.builder.get_object("right_stack").unwrap();
+        let crwo_back: gtk::Button =
+            app.builder.get_object("crwo_back").unwrap();
+        let crwo_forward: gtk::Button =
+            app.builder.get_object("crwo_forward").unwrap();
+        let ed_zoom_level: gtk::Scale =
+            app.builder.get_object("ed_zoom_level").unwrap();
 
-        let mut teha_headerbar = TehaHeaderBar {
-            header_bar: header_bar,
+        let teha_headerbar = HeaderBar {
+            parent: header_bar,
             left_stack: left_stack,
             mid_stack: mid_stack,
             right_stack: right_stack,
             crwo_back: crwo_back,
             crwo_forward: crwo_forward,
+            ed_zoom_level: ed_zoom_level,
         };
 
         teha_headerbar
     }
 
-    fn connect_ui(app: Rc<RefCell<TehaApplication>>) {
+    fn connect_ui(app: Rc<RefCell<Application>>) {
         let teha_app = app.borrow();
         let window = teha_app.main_window.as_ref().unwrap().clone();
         let header_bar = window.borrow().header_bar.as_ref().unwrap().clone();
@@ -187,7 +226,7 @@ impl TehaHeaderBar {
             let app = app.clone();
 
             // connect "clicked" signal to a closure
-            crwo_back.connect_clicked(move |me| {
+            crwo_back.connect_clicked(move |_me| {
                 let view_mode = app.borrow().last_view_mode;
                 app.borrow_mut().update_view(view_mode);
             });
@@ -201,20 +240,25 @@ impl TehaHeaderBar {
             let app = app.clone();
             let crwo_infobar = window.borrow().crwo_infobar.clone();
             let crwo_infobar_title = window.borrow().crwo_infobar_title.clone();
-            let crwo_infobar_description = window.borrow().crwo_infobar_description.clone();
+            let crwo_infobar_description =
+                window.borrow().crwo_infobar_description.clone();
             let crwo_file_name = window.borrow().crwo_file_name.clone();
             let crwo_file_location = window.borrow().crwo_file_location.clone();
             let crwo_width = window.borrow().crwo_width.clone();
             let crwo_height = window.borrow().crwo_height.clone();
-            let crwo_transparent_background = window.borrow().crwo_transparent_background.clone();
+            let crwo_transparent_background =
+                window.borrow().crwo_transparent_background.clone();
+            let window = window.clone();
 
-            crwo_forward.connect_clicked(move |me| {
+            crwo_forward.connect_clicked(move |_me| {
                 // check if the file name is valid, show message through infobar
                 // if not. and return
                 let file_name = crwo_file_name.get_text().unwrap();
                 match common::string::is_valid_filename(&file_name) {
                     Err(msg) => {
-                        crwo_infobar_title.set_label(gettext("<b>Invailed File Name</b>").as_str());
+                        crwo_infobar_title.set_label(
+                            gettext("<b>Invailed File Name</b>").as_str()
+                        );
                         crwo_infobar_description.set_label(msg.as_str());
                         if !crwo_infobar.get_visible() {
                             crwo_infobar.show();
@@ -228,8 +272,12 @@ impl TehaHeaderBar {
                 let mut file_path = match crwo_file_location.get_filename() {
                     Some(val) => val,
                     None => {
-                        crwo_infobar_title.set_label(gettext("<b>Invailed File Location</b>").as_str());
-                        crwo_infobar_description.set_label(gettext("File location cannot be empty").as_str());
+                        crwo_infobar_title.set_label(
+                            gettext("<b>Invailed File Location</b>").as_str()
+                        );
+                        crwo_infobar_description.set_label(
+                            gettext("File location cannot be empty").as_str()
+                        );
                         if !crwo_infobar.get_visible() {
                             crwo_infobar.show();
                         }
@@ -242,11 +290,12 @@ impl TehaHeaderBar {
                 file_path.set_extension("teha");
                 let width = crwo_width.get_value_as_int();
                 let height = crwo_height.get_value_as_int();
-                let transparent_background = crwo_transparent_background.get_active();
+                let transparent_background =
+                    crwo_transparent_background.get_active();
 
 
                 // create a file in the given path
-                let mut file = match File::create(&file_path) {
+                let _ = match File::create(&file_path) {
                     Ok(file) => file,
                     Err(why) => {
                         // setting the title
@@ -263,7 +312,9 @@ impl TehaHeaderBar {
                             /* TRANSLATORS: this wrod will be in sentence like this "Error [ERROR_DESCRIPTION]" */
                             gettext("Error"),
                             why.description());
-                        crwo_infobar_description.set_label(description.as_str());
+                        crwo_infobar_description.set_label(
+                            description.as_str()
+                        );
                         if !crwo_infobar.get_visible() {
                             crwo_infobar.show();
                         }
@@ -271,20 +322,64 @@ impl TehaHeaderBar {
                     },
                 };
 
+                // start a new work with the information we got.
+                window.borrow_mut().new_documents(
+                    Document::new(
+                        1,
+                        file_path,
+                        Size::new(width, height),
+                        transparent_background
+                    )
+                );
+
                 // cleanup the widgets for reuse
                 crwo_file_name.set_text("");
                 crwo_file_location.unselect_all();
-                crwo_width.set_value(1280_f64);
-                crwo_height.set_value(800_f64);
+                crwo_width.set_value(800_f64);
+                crwo_height.set_value(600_f64);
                 crwo_transparent_background.set_active(true);
                 if crwo_infobar.get_visible() {
                     crwo_infobar.hide();
                 }
 
-                // start a new work with the information we got.
-
-
                 app.borrow_mut().update_view(ViewMode::Editing);
+            });
+        }
+
+        {
+            let ed_zoom_level = header_bar.borrow().ed_zoom_level.clone();
+            ed_zoom_level.connect_format_value(move |_me, value| {
+                format!("{}%", value * 100.0)
+            });
+        }
+
+        {
+            let ed_zoom_level = header_bar.borrow().ed_zoom_level.clone();
+            let window = window.clone();
+            ed_zoom_level.connect_value_changed(move |me| {
+                let current_document;
+                let page_number;
+                {
+                    let window = window.borrow();
+                    if window.documents.is_empty() {
+                        return;
+                    } else {
+                        current_document = window.current_document;
+                    }
+
+                    if window.documents[current_document].pages.is_empty() {
+                        return;
+                    } else {
+                        page_number = window
+                            .documents[current_document]
+                            .page_number;
+                    }
+                }
+                window
+                    .borrow_mut()
+                    .documents[current_document]
+                    .pages[page_number]
+                    .zoom_level = me.get_value();
             });
         }
     }
@@ -294,5 +389,175 @@ impl TehaHeaderBar {
         self.left_stack.set_visible_child_name(&view_name);
         self.mid_stack.set_visible_child_name(&view_name);
         self.right_stack.set_visible_child_name(&view_name);
+    }
+}
+
+pub struct DrawingArea {
+    pub parent: gtk::DrawingArea,
+    _current_tool: CurrentTool,
+    _scrolled_drawing_area: gtk::ScrolledWindow,
+}
+
+impl DrawingArea {
+    pub fn new(app: &Application) -> Self {
+        let drawing_area: gtk::DrawingArea =
+            app.builder.get_object("drawing_area").unwrap();
+        let scrolled_drawing_area: gtk::ScrolledWindow =
+            app.builder.get_object("scrolled_drawing_area").unwrap();
+
+        DrawingArea {
+            parent: drawing_area,
+            _current_tool: CurrentTool::Tool(Tool::Controller),
+            _scrolled_drawing_area: scrolled_drawing_area,
+        }
+    }
+
+    fn connect_ui(app: Rc<RefCell<Application>>) {
+        let teha_app = app.borrow();
+        let window = teha_app
+            .main_window
+            .as_ref()
+            .unwrap()
+            .clone();
+        let drawing_area = window
+            .borrow()
+            .drawing_area
+            .as_ref()
+            .unwrap()
+            .clone();
+        let drawing_area = drawing_area
+            .borrow()
+            .parent
+            .clone();
+
+        // connect drawing_area::draw to document::draw
+        {
+            let window = window.clone();
+            let drawingarea = drawing_area.clone();
+            drawing_area.connect_draw(move |me, cr| {
+                {
+                    if window.borrow().documents.len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_doc;
+                {
+                    current_doc = window.borrow()
+                                        .current_document;
+                }
+
+                let page_n;
+                {
+                    page_n = window.borrow()
+                                   .documents[current_doc]
+                                   .page_number;
+                }
+
+                let page_bound;
+                {
+                    page_bound = window.borrow()
+                                       .documents[current_doc]
+                                       .pages[page_n]
+                                       .draw_extents();
+                }
+
+                if let Some(val) = page_bound {
+                    let width = (val.maxs().x - val.mins().x).abs();
+                    let height = (val.maxs().y - val.mins().y).abs();
+                    drawingarea.set_size_request(
+                        width as i32 * 3,
+                        height as i32 * 3
+                    );
+
+                    // TODO: translate the page to the center of drawingarea
+                }
+
+                {
+                    window.borrow()
+                          .documents[current_doc]
+                          .draw(cr);
+                }
+
+                // FIXME: I'm pretty sure this is not the right way!
+                me.queue_draw();
+                Inhibit(true)
+            });
+        }
+
+        // connect drawing_area::connect_motion_notify_event to document::motion_notify
+        {
+            let window = window.clone();
+            drawing_area.connect_motion_notify_event(move |_me, event| {
+                {
+                    if window.borrow()
+                             .documents
+                             .len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_document;
+                {
+                    current_document = window.borrow()
+                                             .current_document;
+                }
+
+                window.borrow_mut()
+                      .documents[current_document]
+                      .motion_notify(event);
+                Inhibit(true)
+            });
+        }
+
+        // connect drawing_area::connect_button_press_event to document::button_press
+        {
+            let window = window.clone();
+            drawing_area.connect_button_press_event(move |_me, event| {
+                {
+                    if window.borrow()
+                             .documents
+                             .len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_document;
+                {
+                    current_document = window.borrow()
+                                             .current_document;
+                }
+
+                window.borrow_mut()
+                      .documents[current_document]
+                      .button_press(event);
+                Inhibit(true)
+            });
+        }
+
+        // connect drawing_area::connect_button_release_event to document::button_release
+        {
+            let window = window.clone();
+            drawing_area.connect_button_release_event(move |_me, event| {
+                {
+                    if window.borrow()
+                             .documents
+                             .len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_document;
+                {
+                    current_document = window.borrow()
+                                             .current_document;
+                }
+
+                window.borrow_mut()
+                      .documents[current_document]
+                      .button_release(event);
+                Inhibit(true)
+            });
+        }
     }
 }

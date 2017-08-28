@@ -1,5 +1,5 @@
 //
-// main.rs
+// types.rs
 //
 // Copyright (C) 2017 Muhannad Alrusayni <0x3UH4224D@gmail.com>
 //
@@ -17,8 +17,30 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-extern crate teha;
+use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 
-fn main() {
-    let _ = teha::run();
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Size<T = f64> {
+    pub width: T,
+    pub height: T,
+}
+
+impl<T> Size<T>
+    where T: Add<Output = T> + AddAssign +
+             Sub<Output = T> + SubAssign +
+             Mul<Output = T> + MulAssign +
+             Div<Output = T> + DivAssign +
+             Eq + Clone {
+
+    pub fn new(width: T, height: T) -> Self {
+        Size {
+            width: width,
+            height: height,
+        }
+    }
+
+    pub fn resize(&mut self, width: T, height: T) {
+        self.width = width;
+        self.height = height;
+    }
 }

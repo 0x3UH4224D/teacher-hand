@@ -33,15 +33,13 @@ pub mod core;
 pub mod error;
 pub mod common;
 
-use gtk::prelude::*;
 use gio::ApplicationExt;
 
 use gettextrs::*;
 
-use gui::app::TehaApplication;
+use gui::app::Application;
 use error::Error;
 
-use std::io;
 use std::env;
 
 pub fn run() -> Result<i32, error::Error> {
@@ -58,7 +56,7 @@ pub fn run() -> Result<i32, error::Error> {
         glib::set_application_name("Teacher hand");
         glib::set_prgname(Some("teacher-hand"));
 
-        let teha_app = TehaApplication::new(gtk_app.clone());
+        let _teha_app = Application::new(gtk_app.clone());
     });
 
     let args: Vec<String> = env::args().collect();

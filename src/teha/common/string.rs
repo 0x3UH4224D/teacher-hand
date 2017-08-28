@@ -17,8 +17,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-use error::Error;
-
 use gettextrs::*;
 
 pub fn is_valid_filename(filename: &str) -> Result<(), String> {
