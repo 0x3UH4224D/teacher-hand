@@ -22,8 +22,9 @@ pub mod draw_objects;
 use std::path::PathBuf;
 
 use gdk::{EventMotion, EventButton};
+use cairo;
 
-use self::draw_objects::{Context, Name, Page};
+use self::draw_objects::{Name, Page};
 use common::types::Size;
 
 pub struct Document {
@@ -61,7 +62,7 @@ impl Document {
     //     Ok(())
     // }
 
-    pub fn draw(&self, cr: &Context) {
+    pub fn draw(&self, cr: &cairo::Context) {
         self.pages[self.page_number].draw(cr);
     }
 

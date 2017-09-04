@@ -19,6 +19,29 @@
 
 use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 
+use na;
+use ncollide;
+use palette;
+use cairo;
+
+pub type Point = na::Point2<f64>;
+pub type Vector = na::Vector2<f64>;
+
+pub type Translation = na::Translation2<f64>;
+pub type Rotation = na::Rotation2<f64>;
+
+pub type Segment = ncollide::shape::Segment2<f64>;
+pub type Polyline = ncollide::procedural::Polyline<Point>;
+pub type Cone = ncollide::shape::Cone<f64>;
+pub type Rectangle = ncollide::bounding_volume::AABB<Point>;
+
+pub type RgbColor = palette::Rgb<f64>;
+pub type RgbaColor = palette::Alpha<RgbColor, f64>;
+
+pub type Surface = cairo::ImageSurface;
+
+
+// TODO: change this to na::Vector2<f64> or Vector
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Size<T = f64> {
     pub width: T,

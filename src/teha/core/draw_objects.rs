@@ -22,37 +22,19 @@ use gdk::{EventMotion, EventButton, EventType};
 
 use gettextrs::*;
 
-use ncollide;
 use ncollide::transformation::ToPolyline;
-use ncollide::bounding_volume::{AABB, BoundingVolume};
+use ncollide::bounding_volume::BoundingVolume;
 use na;
 use alga::linear::{Transformation, ProjectiveTransformation,
-                   EuclideanSpace, AffineSpace};
+                   AffineSpace};
 
-use palette::{self};
-
-use common::types::Size;
-
-pub type Point = na::Point2<f64>;
-pub type Vector = na::Vector2<f64>;
-pub type Translation = na::Translation2<f64>;
-pub type Rotation = na::Rotation2<f64>;
-pub type Segment = ncollide::shape::Segment2<f64>;
-pub type Cone = ncollide::shape::Cone<f64>;
-
-pub type RgbColor = palette::Rgb<f64>;
-pub type RgbaColor = palette::Alpha<RgbColor, f64>;
-pub type Context = cairo::Context;
-pub type Surface = cairo::ImageSurface;
+use common::Context;
+use common::types::*;
 
 pub trait Draw {
-    fn draw(&self, cr: &Context, zoom_level: f64, translate: &Vector);
-    fn in_draw(&self, pos: &Point, zoom_level: f64, translate: &Vector) -> bool;
-    fn draw_extents(
-        &self,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> Option<AABB<Point>>;
+    fn draw(&self, cr: &Context);
+    fn in_draw(&self, pos: &Point, cr: &Context) -> bool;
+    fn draw_extents(&self, cr: &Context) -> Option<Rectangle>;
 }
 
 pub trait Name {
@@ -93,22 +75,22 @@ pub trait Event {
     fn motion_notify(
         &mut self,
         event: &EventMotion,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool { false }
     #[allow(unused_variables)]
     fn button_press(
         &mut self,
         event: &EventButton,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool { false }
     #[allow(unused_variables)]
     fn button_release(
         &mut self,
         event: &EventButton,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool { false }
 }
 
@@ -124,69 +106,105 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn draw(&self, cr: &Context) {
-        cr.save();
-        cr.translate(
-            self.translate.x,
-            self.translate.y
+    fn page_bound(&self) -> Rectangle {
+        let half_width = self.size.width as f64 / 2.0;
+        let half_height = self.size.height as f64 / 2.0;
+        let top_left = Point::new(-half_width, -half_height);
+        let bottom_right = Point::new(half_width, half_height);
+        Rectangle::new(top_left, bottom_right)
+    }
+
+    fn create_draw_context(
+        &self
+    ) -> Option<(cairo::ImageSurface, Context, Rectangle)> {
+
+        let rect = match self.draw_extents() {
+            None => return None,
+            Some(val) => val,
+        };
+        let width = (rect.maxs().x - rect.mins().x).abs();
+        let height = (rect.maxs().y - rect.mins().y).abs();
+        let surface = cairo::ImageSurface::create(
+            cairo::Format::ARgb32,
+            width as i32,
+            height as i32
         );
-        cr.scale(self.zoom_level, self.zoom_level);
-        cr.set_line_width(5.0);
-        cr.rectangle(
-            -self.size.width as f64 / 2.0,
-            -self.size.height as f64 / 2.0,
-            self.size.width as f64,
-            self.size.height as f64
+        let context = Context::new(
+            cairo::Context::new(&surface),
+            self.zoom_level
         );
+
+        // TODO: this may be done from Context so we can know the translate
+        // from other methods in an wasy way.
+        context.translate(rect.maxs().x.abs(), rect.maxs().y.abs());
+
+        Some((surface, context, rect))
+    }
+
+    fn create_in_draw_context(&self) -> (cairo::ImageSurface, Context) {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let context = Context::new(
+            cairo::Context::new(&surface),
+            self.zoom_level
+        );
+
+        (surface, context)
+    }
+
+    fn line_width(&self) -> f64 {
+        5.0
+    }
+
+    pub fn draw(&self, cr: &cairo::Context) {
+        let (surface, context, _) = match self.create_draw_context() {
+            None => return,
+            Some(val) => val,
+        };
+
+        context.save();
+        context.set_line_width(self.line_width());
+        context.rectangle(&self.page_bound());
         if let Some(color) = self.border {
-            cr.set_source_rgb(
-                color.red,
-                color.green,
-                color.blue
-            );
-            cr.stroke_preserve();
+            context.set_source_rgb(&color);
+            context.stroke_preserve();
         }
         if let Some(color) = self.color {
-            cr.set_source_rgb(
-                color.red,
-                color.green,
-                color.blue,
-            );
-            cr.fill();
+            context.set_source_rgb(&color);
+            context.fill();
         }
-        cr.new_path();
-        cr.identity_matrix();
-        cr.restore();
+        context.restore();
+
         for layer in self.layers.iter() {
-            layer.draw(cr, self.zoom_level, &self.translate);
+            layer.draw(&context);
         }
+
+        cr.save();
+        cr.set_source_surface(&surface, self.translate.x, self.translate.y);
+        cr.paint();
+        cr.restore();
     }
 
     pub fn in_draw(&self, pos: &Point) -> bool {
+        let (_, cr) = self.create_in_draw_context();
         for layer in self.layers.iter() {
-            if layer.in_draw(&pos, self.zoom_level, &self.translate) {
+            if layer.in_draw(&pos, &cr) {
                 return true;
             }
         }
         false
     }
 
-    pub fn draw_extents(&self) -> Option<AABB<Point>> {
-        let mut page_bound = AABB::new(
-            Point::new(0.0, 0.0),
-            Point::new(self.size.width as f64,
-                       self.size.height as f64)
-        );
-        let mins = page_bound.mins()
-            .scale_by(self.zoom_level)
-            .translate_by(&self.translate);
-        let maxs = page_bound.maxs()
-            .scale_by(self.zoom_level)
-            .translate_by(&self.translate);
-        page_bound = AABB::new(mins, maxs)
-            // the draw line width for page border is 5 2.5 in the page
-            // and 2.5 out the page bounds
-            .loosened(2.5 * self.zoom_level);
+    pub fn draw_extents(&self) -> Option<Rectangle> {
+        let (_, cr) = self.create_in_draw_context();
+
+        cr.save();
+        cr.set_line_width(self.line_width());
+        cr.rectangle(&self.page_bound());
+
+        let fill_extents = cr.fill_extents();
+        let stroke_extents = cr.stroke_extents();
+        let page_bound = fill_extents.merged(&stroke_extents);
+        cr.restore();
         if self.layers.len() == 0 {
             return Some(page_bound);
         }
@@ -194,9 +212,7 @@ impl Page {
         let mut iter =
             self.layers
                 .iter()
-                .filter_map(
-                    |s| s.draw_extents(self.zoom_level, &self.translate)
-                );
+                .filter_map(|s| s.draw_extents(&cr));
         let init = match iter.next() {
             None => return Some(page_bound),
             Some(val) => val,
@@ -207,8 +223,16 @@ impl Page {
     }
 
     pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        let mut translation = match self.draw_extents() {
+            None => return false,
+            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+        };
+        translation -= self.translate.clone();
+        let (x, y) = event.get_position();
+        let pos = Point::new(x, y).translate_by(&translation);
         for layer in self.layers.iter_mut() {
-            if layer.motion_notify(event, self.zoom_level, &self.translate) {
+            if layer.motion_notify(event, &pos, &cr) {
                 return true;
             }
         }
@@ -216,8 +240,16 @@ impl Page {
     }
 
     pub fn button_press(&mut self, event: &EventButton) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        let mut translation = match self.draw_extents() {
+            None => return false,
+            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+        };
+        translation -= self.translate.clone();
+        let (x, y) = event.get_position();
+        let pos = Point::new(x, y).translate_by(&translation);
         for layer in self.layers.iter_mut() {
-            if layer.button_press(event, self.zoom_level, &self.translate) {
+            if layer.button_press(event, &pos, &cr) {
                 return true;
             }
         }
@@ -225,8 +257,16 @@ impl Page {
     }
 
     pub fn button_release(&mut self, event: &EventButton) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        let mut translation = match self.draw_extents() {
+            None => return false,
+            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+        };
+        translation -= self.translate.clone();
+        let (x, y) = event.get_position();
+        let pos = Point::new(x, y).translate_by(&translation);
         for layer in self.layers.iter_mut() {
-            if layer.button_release(event, self.zoom_level, &self.translate) {
+            if layer.button_release(event, &pos, &cr) {
                 return true;
             }
         }
@@ -243,7 +283,7 @@ impl Default for Page {
             border: Some(RgbColor::new(0.47, 0.47, 0.47)), // #797979
             grid: None,
             name: gettext("Unnamed Page"),
-            translate: Vector::new(0.0, 0.0),
+            translate: Vector::new(800.0, 800.0),
             zoom_level: 1.0,
         }
     }
@@ -311,39 +351,30 @@ impl Default for Layer {
 impl LayerTrait for Layer {}
 
 impl Draw for Layer {
-    fn draw(&self, cr: &Context, zoom_level: f64, translate: &Vector) {
+    fn draw(&self, cr: &Context) {
         if !self.visible {
             return;
         }
 
         for child in self.children.iter() {
-            child.draw(cr, zoom_level, translate);
+            child.draw(cr);
         }
     }
 
-    fn in_draw(
-        &self,
-        pos: &Point,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> bool {
+    fn in_draw( &self, pos: &Point, cr: &Context) -> bool {
         if !self.visible {
             return false;
         }
 
         for child in self.children.iter() {
-            if child.in_draw(pos, zoom_level, translate) {
+            if child.in_draw(pos, cr) {
                 return true;
             }
         }
         false
     }
 
-    fn draw_extents(
-        &self,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> Option<AABB<Point>> {
+    fn draw_extents(&self, cr: &Context) -> Option<Rectangle> {
         if self.children.len() == 0 {
             return None;
         }
@@ -351,7 +382,7 @@ impl Draw for Layer {
         let mut iter =
             self.children
                 .iter()
-                .filter_map(|s| s.draw_extents(zoom_level, translate));
+                .filter_map(|s| s.draw_extents(cr));
         let init = match iter.next() {
             None => return None,
             Some(val) => val,
@@ -435,11 +466,11 @@ impl Event for Layer {
     fn motion_notify(
         &mut self,
         event: &EventMotion,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool {
         for child in self.children.iter_mut() {
-            if child.motion_notify(event, zoom_level, translate) {
+            if child.motion_notify(event, pos, cr) {
                 return true;
             }
         }
@@ -449,11 +480,11 @@ impl Event for Layer {
     fn button_press(
         &mut self,
         event: &EventButton,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool {
         for child in self.children.iter_mut() {
-            if child.button_press(event, zoom_level, translate) {
+            if child.button_press(event, pos, cr) {
                 return true;
             }
         }
@@ -463,11 +494,11 @@ impl Event for Layer {
     fn button_release(
         &mut self,
         event: &EventButton,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool {
         for child in self.children.iter_mut() {
-            if child.button_release(event, zoom_level, translate) {
+            if child.button_release(event, pos, cr) {
                 return true;
             }
         }
@@ -586,62 +617,52 @@ impl LineArrow {
         2.0
     }
 
-    fn select_controller(
-        &self,
-        pos: &Point,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> Option<LineArrowControllers> {
-        // we create zero size image since we don't really need it, but it's
-        // required to create cairo::Context
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
-        let cr = &Context::new(&surface);
-        let pos = pos.clone() - translate.clone();
-
+    fn select_controller(&self, pos: &Point, cr: &Context) -> Option<LineArrowControllers> {
+        cr.new_path();
         cr.save();
-        self.draw_start_point(cr, zoom_level, translate, false);
+        self.draw_start_point(cr, false);
         if cr.in_stroke(pos.x, pos.y) {
             return Some(LineArrowControllers::StartPoint);
         }
         cr.restore();
 
         cr.save();
-        self.draw_end_point(cr, zoom_level, translate, false);
+        self.draw_end_point(cr, false);
         if cr.in_stroke(pos.x, pos.y) {
             return Some(LineArrowControllers::EndPoint);
         }
         cr.restore();
 
         cr.save();
-        self.draw_go_direction(cr, zoom_level, translate, false);
+        self.draw_go_direction(cr, false);
         if cr.in_stroke(pos.x, pos.y) {
             return Some(LineArrowControllers::GoDirection);
         }
         cr.restore();
 
         cr.save();
-        self.draw_arrive_direction(cr, zoom_level, translate, false);
+        self.draw_arrive_direction(cr, false);
         if cr.in_stroke(pos.x, pos.y) {
             return Some(LineArrowControllers::ArriveDirection);
         }
         cr.restore();
 
         cr.save();
-        self.draw_segment(cr, zoom_level, translate, false);
+        self.draw_segment(cr, false);
         if cr.in_stroke(pos.x, pos.y) {
             return Some(LineArrowControllers::Body);
         }
         cr.restore();
 
         cr.save();
-        self.draw_head(cr, zoom_level, translate, false);
+        self.draw_head(cr, false);
         if cr.in_fill(pos.x, pos.y) {
             return Some(LineArrowControllers::Body);
         }
         cr.restore();
 
         cr.save();
-        self.draw_tail(cr, zoom_level, translate, false);
+        self.draw_tail(cr, false);
         if cr.in_fill(pos.x, pos.y) {
             return Some(LineArrowControllers::Body);
         }
@@ -650,53 +671,18 @@ impl LineArrow {
         None
     }
 
-    fn draw_segment(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_segment(&self, cr: &Context, draw_it: bool) {
         cr.new_path();
-        cr.set_source_rgba(
-            self.color.color.red,
-            self.color.color.green,
-            self.color.color.blue,
-            self.color.alpha
-        );
-        cr.set_line_width(self.width * zoom_level);
+        cr.set_source_rgba(&self.color);
+        cr.set_line_width(self.width);
         cr.set_line_cap(self.cap);
         cr.set_line_join(self.join);
         cr.set_dash(self.dashes.as_slice(), self.offset);
-        cr.translate(translate.x, translate.y);
 
-        let start = self.segment
-                        .a()
-                        .scale_by(zoom_level);
-        let go_dir = &self.go_dir
-                          .clone() * zoom_level;
-        let arrive_dir = &self.arrive_dir
-                              .clone() * zoom_level;
-        let end = self.segment
-                      .b()
-                      .scale_by(zoom_level);
-        // start point
-        cr.move_to(start.x, start.y);
         if self.curve_like {
-            cr.curve_to(
-                // go direction
-                go_dir.x + start.x,
-                go_dir.y + start.y,
-                // arrive direction
-                arrive_dir.x + end.x,
-                arrive_dir.y + end.y,
-                // end point
-                end.x,
-                end.y);
+            cr.curve(&self.segment, &self.go_dir, &self.arrive_dir);
         } else {
-            // end point
-            cr.line_to(end.x, end.y);
+            cr.line(&self.segment);
         }
 
         if draw_it {
@@ -704,321 +690,160 @@ impl LineArrow {
         }
     }
 
-    // TODO: Not finished.
-    fn draw_head(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_head( &self, cr: &Context, draw_it: bool ) {
         cr.new_path();
-        cr.set_source_rgba(
-            self.color.color.red,
-            self.color.color.green,
-            self.color.color.blue,
-            self.color.alpha
-        );
-        cr.translate(translate.x, translate.y);
+        cr.set_source_rgba(&self.color);
 
-        let start = self.segment
-                        .a()
-                        .scale_by(zoom_level);
-        let arrive_dir = &self.arrive_dir
-                              .clone() * zoom_level;
-        let end = self.segment
-                      .b()
-                      .scale_by(zoom_level);
-        let line_width = self.width * zoom_level;
+        let start = self.segment.a();
+        let arrive_dir = &self.arrive_dir;
+        let end = self.segment.b();
+        let radius = self.width * 1.25;
 
-        let mut triangle =
-            Cone::new(line_width * 1.25, line_width * 1.25).to_polyline(());
-        let mut rotate;
-        if self.curve_like {
-            rotate = Rotation::rotation_between(
-                &arrive_dir,
-                &Vector::new(0.0, -1.0),
-            );
+        let mut triangle = Cone::new(radius, radius).to_polyline(());
+
+        // get the rotation between out triangle and other vectors
+        let mut rotate = if self.curve_like {
+            Rotation::rotation_between(arrive_dir, &Vector::new(0.0, -1.0))
         } else {
             // Convert @start point to Vector with @end point as it's origin.
             let start_vec =
-                Translation::new(-end.x, -end.y).transform_point(&start);
+                Translation::new(-end.x, -end.y).transform_point(start);
             // calcualte the angle between @start_vec and our triangle.
-            rotate = Rotation::rotation_between(
+            Rotation::rotation_between(
                 &Vector::new(start_vec.x, start_vec.y),
-                // y = -1.0 becuse cairo/gtk invert the y-axis after drawing it.
-                &Vector::new(0.0, -1.0),
-            );
-        }
+                &Vector::new(0.0, -1.0)
+            )
+        };
+
         // we make sure that the angle is not negative value.
         let angle = ((360_f64).to_radians() - rotate.angle())
                               .to_degrees()
                               .abs()
                               .to_radians();
-        // create a Rotation object.
         rotate = Rotation::new(angle);
         // rotate @triangle
         triangle.rotate_by(&rotate);
         // translate @triangle to end point.
         triangle.translate_by(&Translation::new(end.x, end.y));
 
-        cr.move_to(triangle.coords()[0].x, triangle.coords()[0].y);
-        cr.line_to(triangle.coords()[1].x, triangle.coords()[1].y);
-        cr.line_to(triangle.coords()[2].x, triangle.coords()[2].y);
+        cr.polyline(&triangle);
         cr.close_path();
         if draw_it {
             cr.fill();
         }
     }
 
-    fn draw_tail(
-        &self,
-        _cr: &Context,
-        _zoom_level: f64,
-        _translate: &Vector,
-        _draw_it: bool
-    ) {
+    fn draw_tail(&self, _cr: &Context, _draw_it: bool) {
         // TODO
     }
 
-    fn draw_body(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
+    fn draw_body(&self, cr: &Context, draw_it: bool) {
         cr.save();
-        self.draw_segment(cr, zoom_level, translate, draw_it);
+        self.draw_segment(cr, draw_it);
         cr.restore();
         cr.save();
-        self.draw_head(cr, zoom_level, translate, draw_it);
+        self.draw_head(cr, draw_it);
         cr.restore();
         cr.save();
-        self.draw_tail(cr, zoom_level, translate, draw_it);
+        self.draw_tail(cr, draw_it);
         cr.restore();
     }
 
-    fn draw_start_point(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_start_point(&self, cr: &Context, draw_it: bool) {
         cr.new_path();
-        cr.translate(translate.x, translate.y);
-        cr.set_line_width(self.line_width() * zoom_level);
 
-        let start = self.segment
-                        .a()
-                        .scale_by(zoom_level);
-        let fill_color = self.fill_color();
-        let stroke_color = self.stroke_color();
-
-        // draw start and end circle
-        cr.arc(start.x, start.y,
-               self.radius() * zoom_level,
-               0.0, (360_f64).to_radians());
+        cr.set_line_width(self.line_width());
+        cr.circle(self.segment.a(), self.radius());
 
         if draw_it {
-            cr.set_source_rgb(
-                fill_color.red,
-                fill_color.green,
-                fill_color.blue,
-            );
+            cr.set_source_rgb(&self.fill_color());
             cr.fill_preserve();
-            cr.set_source_rgb(
-                stroke_color.red,
-                stroke_color.green,
-                stroke_color.blue,
-            );
+            cr.set_source_rgb(&self.stroke_color());
             cr.stroke();
         }
     }
 
-    fn draw_end_point(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_end_point(&self, cr: &Context, draw_it: bool) {
         cr.new_path();
-        cr.translate(translate.x, translate.y);
-        cr.set_line_width(self.line_width() * zoom_level);
 
-        let end = self.segment
-                      .b()
-                      .scale_by(zoom_level);
-        let fill_color = self.fill_color();
-        let stroke_color = self.stroke_color();
-
-        cr.arc(end.x, end.y,
-               self.radius() * zoom_level,
-               0.0, (360_f64).to_radians());
+        cr.set_line_width(self.line_width());
+        cr.circle(self.segment.b(), self.radius());
 
         if draw_it {
-            cr.set_source_rgb(
-                fill_color.red,
-                fill_color.green,
-                fill_color.blue,
-            );
+            cr.set_source_rgb(&self.fill_color());
             cr.fill_preserve();
-            cr.set_source_rgb(
-                stroke_color.red,
-                stroke_color.green,
-                stroke_color.blue,
-            );
+            cr.set_source_rgb(&self.stroke_color());
             cr.stroke();
         }
     }
 
-    fn draw_go_direction(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_go_direction(&self, cr: &Context, draw_it: bool) {
         cr.new_path();
-        cr.translate(translate.x, translate.y);
-        cr.set_line_width(self.line_width() * zoom_level);
 
-        let go_dir = &self.go_dir
-                          .clone() * zoom_level;
-        let start = self.segment
-                        .a()
-                        .scale_by(zoom_level);
-        let fill_color = self.fill_color();
-        let stroke_color = self.stroke_color();
-
-        // draw @go_dir and @arrive_dir circle
-        cr.arc(start.x + go_dir.x, start.y + go_dir.y,
-               self.radius() * zoom_level,
-               0.0, (360_f64).to_radians());
+        cr.set_line_width(self.line_width());
+        let pos = self.segment.a() + self.go_dir.clone();
+        cr.circle(&pos, self.radius());
 
         if draw_it {
-            cr.set_source_rgb(
-                fill_color.red,
-                fill_color.green,
-                fill_color.blue,
-            );
+            cr.set_source_rgb(&self.fill_color());
             cr.fill_preserve();
-            cr.set_source_rgb(
-                stroke_color.red,
-                stroke_color.green,
-                stroke_color.blue,
-            );
+            cr.set_source_rgb(&self.stroke_color());
             cr.stroke();
         }
     }
 
-    fn draw_arrive_direction(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector,
-        draw_it: bool
-    ) {
-        cr.identity_matrix();
+    fn draw_arrive_direction(&self, cr: &Context, draw_it: bool) {
         cr.new_path();
-        cr.translate(translate.x, translate.y);
-        cr.set_line_width(self.line_width() * zoom_level);
 
-        let arrive_dir = &self.arrive_dir
-                              .clone() * zoom_level;
-        let end = self.segment
-                      .b()
-                      .scale_by(zoom_level);
-        let fill_color = self.fill_color();
-        let stroke_color = self.stroke_color();
-
-        cr.arc(end.x + arrive_dir.x, end.y + arrive_dir.y,
-               self.radius() * zoom_level,
-               0.0, (360_f64).to_radians());
+        cr.set_line_width(self.line_width());
+        let pos = self.segment.b() + self.arrive_dir.clone();
+        cr.circle(&pos, self.radius());
 
         if draw_it {
-            cr.set_source_rgb(
-                fill_color.red,
-                fill_color.green,
-                fill_color.blue,
-            );
+            cr.set_source_rgb(&self.fill_color());
             cr.fill_preserve();
-            cr.set_source_rgb(
-                stroke_color.red,
-                stroke_color.green,
-                stroke_color.blue,
-            );
+            cr.set_source_rgb(&self.stroke_color());
             cr.stroke();
         }
     }
 
-    fn draw_helper_shapes(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector
-    ) {
+    fn draw_helper_shapes(&self, cr: &Context) {
         cr.save();
-        cr.identity_matrix();
         cr.new_path();
-        cr.translate(translate.x, translate.y);
-        cr.set_line_width(self.line_width() * zoom_level);
-
-        let start = self.segment
-                        .a()
-                        .scale_by(zoom_level);
-        let go_dir = &self.go_dir
-                          .clone() * zoom_level;
-        let arrive_dir = &self.arrive_dir
-                              .clone() * zoom_level;
-        let end = self.segment
-                      .b()
-                      .scale_by(zoom_level);
-        let stroke_color = self.color.color.clone();
 
         if self.curve_like {
-            cr.set_source_rgba(
-                stroke_color.red,
-                stroke_color.green,
-                stroke_color.blue,
-                0.3,
-            );
-            cr.set_dash(&[10.0 * zoom_level], 0.0);
+            cr.set_line_width(self.line_width());
+            cr.set_source_rgba(&RgbaColor::new(
+                self.color.color.red,
+                self.color.color.green,
+                self.color.color.blue,
+                0.3
+            ));
+            cr.set_dash(&[10.0], 0.0);
 
-            cr.move_to(start.x, start.y);
-            cr.rel_line_to(go_dir.x, go_dir.y);
+            cr.move_to(self.segment.a());
+            cr.rel_line_to(&self.go_dir);
             cr.stroke();
 
-            cr.move_to(end.x, end.y);
-            cr.rel_line_to(arrive_dir.x, arrive_dir.y);
+            cr.move_to(self.segment.b());
+            cr.rel_line_to(&self.arrive_dir);
             cr.stroke();
         }
         cr.restore();
     }
 
-    fn draw_controllers(
-        &self,
-        cr: &Context,
-        zoom_level: f64,
-        translate: &Vector
-    ) {
+    fn draw_controllers(&self, cr: &Context) {
         cr.save();
-        self.draw_start_point(cr, zoom_level, translate, true);
+        self.draw_start_point(cr, true);
         cr.restore();
         cr.save();
-        self.draw_end_point(cr, zoom_level, translate, true);
+        self.draw_end_point(cr, true);
         cr.restore();
         cr.save();
-        self.draw_go_direction(cr, zoom_level, translate, true);
+        self.draw_go_direction(cr, true);
         cr.restore();
         cr.save();
-        self.draw_arrive_direction(cr, zoom_level, translate, true);
+        self.draw_arrive_direction(cr, true);
         cr.restore();
     }
 }
@@ -1026,133 +851,72 @@ impl LineArrow {
 impl ShapeTrait for LineArrow {}
 
 impl Draw for LineArrow {
-    fn draw(&self, cr: &Context, zoom_level: f64, translate: &Vector) {
+    fn draw(&self, cr: &Context) {
         if !self.visible || self.color.alpha == 0.0 {
             return;
         }
 
-        let draw_extents = match self.draw_extents(zoom_level, translate) {
-            None => return,
-            Some(val) => val,
-        };
-        let width = (draw_extents.maxs().x - draw_extents.mins().x).abs();
-        let height = (draw_extents.maxs().y - draw_extents.mins().y).abs();
-        let surface = Surface::create(
-            cairo::Format::ARgb32,
-            width as i32,
-            height as i32
-        );
-        let context = Context::new(&surface);
+        cr.save();
 
-        self.draw_body(&context, zoom_level, translate, true);
+        self.draw_body(&cr, true);
         if self.selected {
-            self.draw_helper_shapes(&context, zoom_level, translate);
-            self.draw_controllers(&context, zoom_level, translate);
+            self.draw_helper_shapes(&cr);
+            self.draw_controllers(&cr);
         }
 
         // draw children if there are any.
         for child in self.children.iter() {
-            child.draw(&context, zoom_level, translate);
+            child.draw(&cr);
         }
 
-        cr.save();
-        cr.set_source_surface(&surface, 0.0, 0.0);
-        cr.paint();
         cr.restore();
     }
 
-    fn in_draw(
-        &self,
-        pos: &Point,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> bool {
-        match self.select_controller(pos, zoom_level, translate) {
+    fn in_draw(&self, pos: &Point, cr: &Context) -> bool {
+        match self.select_controller(pos, cr) {
             None => return false,
             _ => return true,
         };
     }
 
-    fn draw_extents(
-        &self,
-        zoom_level: f64,
-        translate: &Vector
-    ) -> Option<AABB<Point>> {
-        // we create zero size image since we don't really need it, but it's
-        // required to create cairo::Context
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
-        let cr = &Context::new(&surface);
+    fn draw_extents(&self, cr: &Context) -> Option<Rectangle> {
+        cr.new_path();
         let mut extents = vec![];
 
         cr.save();
-        self.draw_start_point(cr, zoom_level, translate, false);
-        let extent = cr.stroke_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_start_point(cr, false);
+        extents.push(cr.stroke_extents());
         cr.restore();
 
         cr.save();
-        self.draw_end_point(cr, zoom_level, translate, false);
-        let extent = cr.stroke_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_end_point(cr, false);
+        extents.push(cr.stroke_extents());
         cr.restore();
 
         cr.save();
-        self.draw_go_direction(cr, zoom_level, translate, false);
-        let extent = cr.stroke_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_go_direction(cr, false);
+        extents.push(cr.stroke_extents());
         cr.restore();
 
         cr.save();
-        self.draw_arrive_direction(cr, zoom_level, translate, false);
-        let extent = cr.stroke_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_arrive_direction(cr, false);
+        extents.push(cr.stroke_extents());
         cr.restore();
 
         cr.save();
-        self.draw_segment(cr, zoom_level, translate, false);
-        let extent = cr.stroke_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_segment(cr, false);
+        extents.push(cr.stroke_extents());
         cr.restore();
 
         cr.save();
-        self.draw_head(cr, zoom_level, translate, false);
-        let extent = cr.fill_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
+        self.draw_head(cr, false);
+        extents.push(cr.fill_extents());
         cr.restore();
 
-        cr.save();
-        self.draw_tail(cr, zoom_level, translate, false);
-        let extent = cr.fill_extents();
-        let extent = AABB::new(
-            Point::new(extent.0, extent.1),
-            Point::new(extent.2, extent.3)
-        );
-        extents.push(extent);
-        cr.restore();
+        // cr.save();
+        // self.draw_tail(cr, false);
+        // extents.push(cr.fill_extents_rect());
+        // cr.restore();
 
         let mut result = extents[0].clone();
         for val in extents.iter() {
@@ -1277,18 +1041,16 @@ impl Event for LineArrow {
     fn button_press(
         &mut self,
         event: &EventButton,
-        zoom_level: f64,
-        translate: &Vector
+        pos: &Point,
+        cr: &Context
     ) -> bool {
         if self.lock || !self.visible {
             return false;
         }
 
         if event.get_event_type() == EventType::ButtonPress {
-            let position = event.get_position();
-            let position = Point::new(position.0, position.1);
             let controller =
-                self.select_controller(&position, zoom_level, translate);
+                self.select_controller(&pos, cr);
             match controller {
                 None => {
                     self.selected_controller = None;
@@ -1296,7 +1058,7 @@ impl Event for LineArrow {
                     return false;
                 },
                 Some(val) => {
-                    self.selected_controller = Some((val, position));
+                    self.selected_controller = Some((val, pos.clone()));
                     self.selected = true;
                     return true;
                 },

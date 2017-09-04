@@ -32,7 +32,7 @@ use gettextrs::*;
 use super::*;
 use super::app::Application;
 use common;
-use common::types::Size;
+use common::types::*;
 use core::{Document};
 
 // note: acronyms names used here refer to:
@@ -433,7 +433,6 @@ impl DrawingArea {
         // connect drawing_area::draw to document::draw
         {
             let window = window.clone();
-            let drawingarea = drawing_area.clone();
             drawing_area.connect_draw(move |me, cr| {
                 {
                     if window.borrow().documents.len() == 0 {
@@ -465,12 +464,27 @@ impl DrawingArea {
                 if let Some(val) = page_bound {
                     let width = (val.maxs().x - val.mins().x).abs();
                     let height = (val.maxs().y - val.mins().y).abs();
-                    drawingarea.set_size_request(
-                        width as i32 * 3,
-                        height as i32 * 3
+                    me.set_size_request(
+                        (width * 1.3) as i32,
+                        (height * 1.3) as i32
                     );
 
+                    let half_width = width / 2.0;
+                    let half_height = height / 2.0;
+                    let draw_area = me.get_allocated_size();
+                    let da_height = draw_area.0.height as f64;
+                    let da_width = draw_area.0.width as f64;
+
                     // TODO: translate the page to the center of drawingarea
+                    {
+                        window.borrow_mut()
+                              .documents[current_doc]
+                              .pages[page_n]
+                              .translate = Vector::new(
+                                (da_width / 2.0) - half_width,
+                                (da_height / 2.0) - half_height
+                              );
+                    }
                 }
 
                 {
