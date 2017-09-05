@@ -154,6 +154,14 @@ impl Context {
             Point::new(x2, y2)
         )
     }
+
+    pub fn in_stroke(&self, pos: &Point) -> bool {
+        self.cr.in_stroke(pos.x, pos.y)
+    }
+
+    pub fn in_fill(&self, pos: &Point) -> bool {
+        self.cr.in_fill(pos.x, pos.y)
+    }
 }
 
 impl Deref for Context {

@@ -18,7 +18,7 @@
 //
 
 use cairo;
-use gdk::{EventMotion, EventButton, EventType};
+use gdk::{self, EventMotion, EventButton};
 
 use gettextrs::*;
 
@@ -222,15 +222,21 @@ impl Page {
         Some(result)
     }
 
-    pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
-        let (_, cr) = self.create_in_draw_context();
+    fn translate_position(&self, pos: (f64, f64)) -> Option<Point> {
         let mut translation = match self.draw_extents() {
-            None => return false,
+            None => return None,
             Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
         };
         translation -= self.translate.clone();
-        let (x, y) = event.get_position();
-        let pos = Point::new(x, y).translate_by(&translation);
+        Some(Point::new(pos.0, pos.1).translate_by(&translation))
+    }
+
+    pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        let pos = match self.translate_position(event.get_position()) {
+            None => return false,
+            Some(val) => val,
+        };
         for layer in self.layers.iter_mut() {
             if layer.motion_notify(event, &pos, &cr) {
                 return true;
@@ -241,13 +247,10 @@ impl Page {
 
     pub fn button_press(&mut self, event: &EventButton) -> bool {
         let (_, cr) = self.create_in_draw_context();
-        let mut translation = match self.draw_extents() {
+        let pos = match self.translate_position(event.get_position()) {
             None => return false,
-            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+            Some(val) => val,
         };
-        translation -= self.translate.clone();
-        let (x, y) = event.get_position();
-        let pos = Point::new(x, y).translate_by(&translation);
         for layer in self.layers.iter_mut() {
             if layer.button_press(event, &pos, &cr) {
                 return true;
@@ -258,13 +261,10 @@ impl Page {
 
     pub fn button_release(&mut self, event: &EventButton) -> bool {
         let (_, cr) = self.create_in_draw_context();
-        let mut translation = match self.draw_extents() {
+        let pos = match self.translate_position(event.get_position()) {
             None => return false,
-            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+            Some(val) => val,
         };
-        translation -= self.translate.clone();
-        let (x, y) = event.get_position();
-        let pos = Point::new(x, y).translate_by(&translation);
         for layer in self.layers.iter_mut() {
             if layer.button_release(event, &pos, &cr) {
                 return true;
@@ -313,17 +313,19 @@ impl Layer {
         // FIXME: this line for testing/debugging
         // and should be removeed when release
 
-        let line_arrow = LineArrow::new(
+        let mut line_arrow = LineArrow::new(
             RgbaColor::new(0.5, 0.5, 1.0, 1.0),
             10.0,
             cairo::LineCap::Round,
             cairo::LineJoin::Round,
             vec![],
             0.0,
-            false,
+            true,
             Segment::new(Point::new(-50.0, -50.0),
                          Point::new(50.0, 50.0)),
         );
+        line_arrow.go_dir = Vector::new(10.0, 80.0);
+        line_arrow.arrive_dir = Vector::new(-10.0, -80.0);
 
         let mut children: Vec<Box<ShapeTrait>> = vec![];
         children.push(Box::new(line_arrow));
@@ -528,7 +530,7 @@ pub struct LineArrow {
     pub selected: bool,
     // this field for Event trait, it contains the selected controller and click
     // position, it contains None if the user click outside the draw area.
-    selected_controller: Option<(LineArrowControllers, Point)>,
+    selected_controller: Option<(LineArrowControllers, Point, Vector, Vector)>,
 
     // draw fields
     pub visible: bool,
@@ -550,9 +552,11 @@ pub struct LineArrow {
 }
 
 impl LineArrow {
-    pub fn new(color: RgbaColor, width: f64, cap: cairo::LineCap,
-           join: cairo::LineJoin, dashes: Vec<f64>, offset: f64,
-           curve_like: bool, segment: Segment) -> Self {
+    pub fn new(
+        color: RgbaColor, width: f64, cap: cairo::LineCap,
+        join: cairo::LineJoin, dashes: Vec<f64>, offset: f64,
+        curve_like: bool, segment: Segment
+    ) -> Self {
         LineArrow {
             children: vec![],
             name: String::new(),
@@ -617,58 +621,97 @@ impl LineArrow {
         2.0
     }
 
-    fn select_controller(&self, pos: &Point, cr: &Context) -> Option<LineArrowControllers> {
+    fn select_controller(
+        &self, pos: &Point, cr: &Context
+    ) -> Option<LineArrowControllers> {
         cr.new_path();
         cr.save();
         self.draw_start_point(cr, false);
-        if cr.in_stroke(pos.x, pos.y) {
+        if cr.in_stroke(pos) || cr.in_fill(pos) {
             return Some(LineArrowControllers::StartPoint);
         }
         cr.restore();
 
         cr.save();
         self.draw_end_point(cr, false);
-        if cr.in_stroke(pos.x, pos.y) {
+        if cr.in_stroke(pos) || cr.in_fill(pos) {
             return Some(LineArrowControllers::EndPoint);
         }
         cr.restore();
 
         cr.save();
         self.draw_go_direction(cr, false);
-        if cr.in_stroke(pos.x, pos.y) {
+        if cr.in_stroke(pos) || cr.in_fill(pos) {
             return Some(LineArrowControllers::GoDirection);
         }
         cr.restore();
 
         cr.save();
         self.draw_arrive_direction(cr, false);
-        if cr.in_stroke(pos.x, pos.y) {
+        if cr.in_stroke(pos) || cr.in_fill(pos) {
             return Some(LineArrowControllers::ArriveDirection);
         }
         cr.restore();
 
         cr.save();
         self.draw_segment(cr, false);
-        if cr.in_stroke(pos.x, pos.y) {
+        if cr.in_stroke(pos) {
             return Some(LineArrowControllers::Body);
         }
         cr.restore();
 
         cr.save();
         self.draw_head(cr, false);
-        if cr.in_fill(pos.x, pos.y) {
+        if cr.in_fill(pos) {
             return Some(LineArrowControllers::Body);
         }
         cr.restore();
 
-        cr.save();
-        self.draw_tail(cr, false);
-        if cr.in_fill(pos.x, pos.y) {
-            return Some(LineArrowControllers::Body);
-        }
-        cr.restore();
+        // cr.save();
+        // self.draw_tail(cr, false);
+        // if cr.in_fill(pos) {
+        //     return Some(LineArrowControllers::Body);
+        //     println!("draw_tail");
+        // }
+        // cr.restore();
 
         None
+    }
+
+    fn move_segment(&mut self, pos: &Point) {
+        let &(.., vec_a, vec_b) = match self.selected_controller {
+            None => return,
+            Some(ref val) => val,
+        };
+        let a = pos.clone() - vec_a.clone();
+        let b = pos.clone() - vec_b.clone();
+        self.segment = Segment::new(a, b);
+    }
+
+    fn move_go_dir(&mut self, pos: &Point) {
+        self.go_dir = Vector::new(
+            pos.x - self.segment.a().x,
+            pos.y - self.segment.a().y
+        );
+    }
+
+    fn move_arrive_dir(&mut self, pos: &Point) {
+        self.arrive_dir = Vector::new(
+            pos.x - self.segment.b().x,
+            pos.y - self.segment.b().y
+        );
+    }
+
+    fn move_start_point(&mut self, pos: &Point) {
+        let b = self.segment.b().clone();
+        let a = pos.clone();
+        self.segment = Segment::new(a, b);
+    }
+
+    fn move_end_point(&mut self, pos: &Point) {
+        let a = self.segment.a().clone();
+        let b = pos.clone();
+        self.segment = Segment::new(a, b);
     }
 
     fn draw_segment(&self, cr: &Context, draw_it: bool) {
@@ -883,6 +926,18 @@ impl Draw for LineArrow {
         cr.new_path();
         let mut extents = vec![];
 
+        if self.curve_like {
+            cr.save();
+            self.draw_go_direction(cr, false);
+            extents.push(cr.stroke_extents());
+            cr.restore();
+
+            cr.save();
+            self.draw_arrive_direction(cr, false);
+            extents.push(cr.stroke_extents());
+            cr.restore();
+        }
+
         cr.save();
         self.draw_start_point(cr, false);
         extents.push(cr.stroke_extents());
@@ -890,16 +945,6 @@ impl Draw for LineArrow {
 
         cr.save();
         self.draw_end_point(cr, false);
-        extents.push(cr.stroke_extents());
-        cr.restore();
-
-        cr.save();
-        self.draw_go_direction(cr, false);
-        extents.push(cr.stroke_extents());
-        cr.restore();
-
-        cr.save();
-        self.draw_arrive_direction(cr, false);
         extents.push(cr.stroke_extents());
         cr.restore();
 
@@ -1038,6 +1083,39 @@ impl Container for LineArrow {
 
 // TODO: override default methods
 impl Event for LineArrow {
+    fn motion_notify(
+        &mut self,
+        event: &EventMotion,
+        pos: &Point,
+        _cr: &Context
+    ) -> bool {
+        if self.lock || !self.visible {
+            return false;
+        }
+
+        if event.get_state() == gdk::BUTTON1_MASK {
+            match self.selected_controller {
+                None => return false,
+                Some((LineArrowControllers::GoDirection, ..)) => {
+                    self.move_go_dir(pos);
+                },
+                Some((LineArrowControllers::ArriveDirection, ..)) => {
+                    self.move_arrive_dir(pos);
+                },
+                Some((LineArrowControllers::StartPoint, ..)) => {
+                    self.move_start_point(pos);
+                },
+                Some((LineArrowControllers::EndPoint, ..)) => {
+                    self.move_end_point(pos);
+                },
+                Some((LineArrowControllers::Body, ..)) => {
+                    self.move_segment(pos);
+                },
+            };
+        }
+        false
+    }
+
     fn button_press(
         &mut self,
         event: &EventButton,
@@ -1048,19 +1126,37 @@ impl Event for LineArrow {
             return false;
         }
 
-        if event.get_event_type() == EventType::ButtonPress {
-            let controller =
-                self.select_controller(&pos, cr);
-            match controller {
+        if event.get_button() == 1 {
+            match self.select_controller(&pos, cr) {
                 None => {
                     self.selected_controller = None;
                     self.selected = false;
                     return false;
                 },
                 Some(val) => {
-                    self.selected_controller = Some((val, pos.clone()));
-                    self.selected = true;
-                    return true;
+                    let vec_a = pos.clone() - self.segment.a().clone();
+                    let vec_b = pos.clone() - self.segment.b().clone();
+                    if !self.selected && (val == LineArrowControllers::Body ||
+                        val == LineArrowControllers::StartPoint ||
+                        val == LineArrowControllers::EndPoint) {
+                        self.selected_controller =
+                        Some((
+                            LineArrowControllers::Body,
+                            pos.clone(),
+                            vec_a, vec_b
+                        ));
+                        self.selected = true;
+                        return true;
+                    } else if self.selected {
+                        self.selected_controller =
+                        Some((
+                            val,
+                            pos.clone(),
+                            vec_a, vec_b
+                        ));
+                        self.selected = true;
+                        return true;
+                    }
                 },
             }
         }
