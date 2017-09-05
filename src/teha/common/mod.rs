@@ -19,8 +19,6 @@
 
 pub mod string;
 pub mod types;
-pub mod cairo;
 
 pub use self::string::*;
 pub use self::types::*;
-pub use self::cairo::*;

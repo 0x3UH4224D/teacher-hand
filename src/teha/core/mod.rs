@@ -18,6 +18,7 @@
 //
 
 pub mod draw_objects;
+pub mod context;
 
 use std::path::PathBuf;
 
