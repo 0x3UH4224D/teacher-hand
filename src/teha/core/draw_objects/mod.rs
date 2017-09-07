@@ -25,7 +25,7 @@ pub use self::page::*;
 pub use self::layer::*;
 pub use self::line_arrow::*;
 
-use gdk::{EventMotion, EventButton};
+use gdk::{EventMotion, EventButton, EventKey};
 
 use core::context::Context;
 use common::types::*;
@@ -89,6 +89,18 @@ pub trait Event {
         &mut self,
         event: &EventButton,
         pos: &Point,
+        cr: &Context
+    ) -> bool { false }
+    #[allow(unused_variables)]
+    fn key_press(
+        &mut self,
+        event: &EventKey,
+        cr: &Context
+    ) -> bool { false }
+    #[allow(unused_variables)]
+    fn key_release(
+        &mut self,
+        event: &EventKey,
         cr: &Context
     ) -> bool { false }
 }

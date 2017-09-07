@@ -22,7 +22,7 @@ pub mod context;
 
 use std::path::PathBuf;
 
-use gdk::{EventMotion, EventButton};
+use gdk::{EventMotion, EventButton, EventKey};
 use cairo;
 
 use self::draw_objects::{Name, Page};
@@ -77,6 +77,14 @@ impl Document {
 
     pub fn button_release(&mut self, event: &EventButton) -> bool {
         self.pages[self.page_number].button_release(event)
+    }
+
+    pub fn key_press(&mut self, event: &EventKey) -> bool {
+        self.pages[self.page_number].key_press(event)
+    }
+
+    pub fn key_release(&mut self, event: &EventKey) -> bool {
+        self.pages[self.page_number].key_release(event)
     }
 }
 

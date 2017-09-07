@@ -476,15 +476,15 @@ impl DrawingArea {
                     let da_width = draw_area.0.width as f64;
 
                     // TODO: translate the page to the center of drawingarea
-                    {
-                        window.borrow_mut()
-                              .documents[current_doc]
-                              .pages[page_n]
-                              .translate = Vector::new(
-                                (da_width / 2.0) - half_width,
-                                (da_height / 2.0) - half_height
-                              );
-                    }
+                    // {
+                    //     window.borrow_mut()
+                    //           .documents[current_doc]
+                    //           .pages[page_n]
+                    //           .translate = Vector::new(
+                    //             (da_width / 2.0) - half_width,
+                    //             (da_height / 2.0) - half_height
+                    //           );
+                    // }
                 }
 
                 {
@@ -570,6 +570,56 @@ impl DrawingArea {
                 window.borrow_mut()
                       .documents[current_document]
                       .button_release(event);
+                Inhibit(true)
+            });
+        }
+
+        // connect drawing_area::connect_key_press_event to document::key_press
+        {
+            let window = window.clone();
+            drawing_area.connect_key_press_event(move |_me, event| {
+                {
+                    if window.borrow()
+                             .documents
+                             .len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_document;
+                {
+                    current_document = window.borrow()
+                                             .current_document;
+                }
+
+                window.borrow_mut()
+                      .documents[current_document]
+                      .key_press(event);
+                Inhibit(true)
+            });
+        }
+
+        // connect drawing_area::connect_key_release_event to document::key_release
+        {
+            let window = window.clone();
+            drawing_area.connect_key_press_event(move |_me, event| {
+                {
+                    if window.borrow()
+                             .documents
+                             .len() == 0 {
+                        return Inhibit(false);
+                    }
+                }
+
+                let current_document;
+                {
+                    current_document = window.borrow()
+                                             .current_document;
+                }
+
+                window.borrow_mut()
+                      .documents[current_document]
+                      .key_release(event);
                 Inhibit(true)
             });
         }

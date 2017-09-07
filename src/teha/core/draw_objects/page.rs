@@ -18,7 +18,7 @@
 //
 
 use cairo;
-use gdk::{EventMotion, EventButton};
+use gdk::{EventMotion, EventButton, EventKey};
 
 use gettextrs::*;
 
@@ -38,6 +38,7 @@ pub struct Page {
     pub name: String,
     pub translate: Vector,
     pub zoom_level: f64,
+
 }
 
 impl Page {
@@ -71,7 +72,7 @@ impl Page {
 
         // TODO: this may be done from Context so we can know the translate
         // from other methods in an wasy way.
-        context.translate(rect.maxs().x.abs(), rect.maxs().y.abs());
+        context.translate(rect.mins().x.abs(), rect.mins().y.abs());
 
         Some((surface, context, rect))
     }
@@ -160,10 +161,12 @@ impl Page {
     fn translate_position(&self, pos: (f64, f64)) -> Option<Point> {
         let mut translation = match self.draw_extents() {
             None => return None,
-            Some(val) => Vector::new(-val.maxs().x, -val.maxs().y),
+            Some(val) => Vector::new(-val.mins().x.abs(), -val.mins().y.abs()),
         };
         translation -= self.translate.clone();
-        Some(Point::new(pos.0, pos.1).translate_by(&translation))
+        let result = Point::new(pos.0, pos.1).translate_by(&translation);
+        println!("{:?}", result);
+        Some(result)
     }
 
     pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
@@ -207,6 +210,26 @@ impl Page {
         }
         false
     }
+
+    pub fn key_press(&mut self, event: &EventKey) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        for layer in self.layers.iter_mut() {
+            if layer.key_press(event, &cr) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn key_release(&mut self, event: &EventKey) -> bool {
+        let (_, cr) = self.create_in_draw_context();
+        for layer in self.layers.iter_mut() {
+            if layer.key_release(event, &cr) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl Default for Page {
@@ -218,7 +241,7 @@ impl Default for Page {
             border: Some(RgbColor::new(0.47, 0.47, 0.47)), // #797979
             grid: None,
             name: gettext("Unnamed Page"),
-            translate: Vector::new(800.0, 800.0),
+            translate: Vector::new(0.0, 0.0),
             zoom_level: 1.0,
         }
     }
