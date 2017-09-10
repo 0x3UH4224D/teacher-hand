@@ -18,7 +18,7 @@
 //
 
 use cairo;
-use gdk::{EventMotion, EventButton, EventKey};
+use gdk::{self, EventMotion, EventButton, EventKey};
 
 use gettextrs::*;
 
@@ -29,6 +29,10 @@ use core::context::Context;
 use common::types::*;
 use super::{Name, LayerTrait, Layer};
 
+pub enum Actions {
+    TranslateViewport(Vector),
+}
+
 pub struct Page {
     pub size: Size<i32>,
     pub layers: Vec<Box<LayerTrait>>,
@@ -38,10 +42,26 @@ pub struct Page {
     pub name: String,
     pub translate: Vector,
     pub zoom_level: f64,
-
+    pub action: Option<Actions>,
+    pub drawarea_size: Size<i32>,
 }
 
 impl Page {
+    pub fn new() -> Page {
+        Page {
+            size: Size::new(800, 600),
+            layers: vec![Box::new(Layer::new())],
+            color: Some(RgbColor::new(1.0, 1.0, 1.0)),
+            border: Some(RgbColor::new(0.47, 0.47, 0.47)), // #797979
+            grid: None,
+            name: gettext("Unnamed Page"),
+            translate: Vector::new(0.0, 0.0),
+            zoom_level: 1.0,
+            action: None,
+            drawarea_size: Size::new(0, 0),
+        }
+    }
+
     fn page_bound(&self) -> Rectangle {
         let half_width = self.size.width as f64 / 2.0;
         let half_height = self.size.height as f64 / 2.0;
@@ -163,18 +183,28 @@ impl Page {
             None => return None,
             Some(val) => Vector::new(-val.mins().x.abs(), -val.mins().y.abs()),
         };
-        translation -= self.translate.clone();
+        translation -= self.translate.clone() * self.zoom_level;
         let result = Point::new(pos.0, pos.1).translate_by(&translation);
-        println!("{:?}", result);
+        // println!("{:?}", result);
         Some(result)
     }
 
     pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        match self.action {
+            Some(Actions::TranslateViewport(_origin_vec)) => {
+                // FIXME: this is not the best way to translateviewport
+                let (x, y) = event.get_position();
+                self.translate = Vector::new(x, y);
+            },
+            _ => {},
+        }
+
         let (_, cr) = self.create_in_draw_context();
         let pos = match self.translate_position(event.get_position()) {
             None => return false,
             Some(val) => val,
         };
+
         for layer in self.layers.iter_mut() {
             if layer.motion_notify(event, &pos, &cr) {
                 return true;
@@ -212,6 +242,12 @@ impl Page {
     }
 
     pub fn key_press(&mut self, event: &EventKey) -> bool {
+        if event.get_keyval() == gdk::enums::key::space {
+            if self.action.is_none() {
+                self.action = Some(Actions::TranslateViewport(self.translate.clone()));
+            }
+        }
+
         let (_, cr) = self.create_in_draw_context();
         for layer in self.layers.iter_mut() {
             if layer.key_press(event, &cr) {
@@ -222,6 +258,10 @@ impl Page {
     }
 
     pub fn key_release(&mut self, event: &EventKey) -> bool {
+        if self.action.is_some() {
+            self.action = None;
+        }
+
         let (_, cr) = self.create_in_draw_context();
         for layer in self.layers.iter_mut() {
             if layer.key_release(event, &cr) {
@@ -229,21 +269,6 @@ impl Page {
             }
         }
         false
-    }
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Page {
-            size: Size::new(800, 600),
-            layers: vec![Box::new(Layer::new())],
-            color: Some(RgbColor::new(1.0, 1.0, 1.0)),
-            border: Some(RgbColor::new(0.47, 0.47, 0.47)), // #797979
-            grid: None,
-            name: gettext("Unnamed Page"),
-            translate: Vector::new(0.0, 0.0),
-            zoom_level: 1.0,
-        }
     }
 }
 

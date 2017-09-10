@@ -39,7 +39,7 @@ impl Document {
     pub fn new(pages_number: usize, path: PathBuf, size: Size<i32>, transparent: bool) -> Self {
         let mut pages: Vec<Page> = vec![];
         for _ in 0..pages_number {
-            pages.push(Page::default());
+            pages.push(Page::new());
             pages.last_mut()
                 .unwrap()
                 .size.resize(size.width, size.height);
@@ -91,7 +91,7 @@ impl Document {
 impl Default for Document {
     fn default() -> Self {
         Document {
-            pages: vec![Page::default()],
+            pages: vec![Page::new()],
             page_number: 0,
             path: PathBuf::new(),
             transparent: true,

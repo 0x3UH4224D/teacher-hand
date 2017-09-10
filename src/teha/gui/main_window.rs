@@ -468,23 +468,6 @@ impl DrawingArea {
                         (width * 1.3) as i32,
                         (height * 1.3) as i32
                     );
-
-                    let half_width = width / 2.0;
-                    let half_height = height / 2.0;
-                    let draw_area = me.get_allocated_size();
-                    let da_height = draw_area.0.height as f64;
-                    let da_width = draw_area.0.width as f64;
-
-                    // TODO: translate the page to the center of drawingarea
-                    // {
-                    //     window.borrow_mut()
-                    //           .documents[current_doc]
-                    //           .pages[page_n]
-                    //           .translate = Vector::new(
-                    //             (da_width / 2.0) - half_width,
-                    //             (da_height / 2.0) - half_height
-                    //           );
-                    // }
                 }
 
                 {
@@ -527,7 +510,8 @@ impl DrawingArea {
         // connect drawing_area::connect_button_press_event to document::button_press
         {
             let window = window.clone();
-            drawing_area.connect_button_press_event(move |_me, event| {
+            drawing_area.connect_button_press_event(move |me, event| {
+                me.grab_focus();
                 {
                     if window.borrow()
                              .documents
@@ -602,7 +586,7 @@ impl DrawingArea {
         // connect drawing_area::connect_key_release_event to document::key_release
         {
             let window = window.clone();
-            drawing_area.connect_key_press_event(move |_me, event| {
+            drawing_area.connect_key_release_event(move |_me, event| {
                 {
                     if window.borrow()
                              .documents
