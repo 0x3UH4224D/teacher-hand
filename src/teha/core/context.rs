@@ -18,25 +18,25 @@
 //
 
 use cairo;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref};
 use common::types::*;
-use alga::linear::EuclideanSpace;
 
-pub struct Context{
-    cr: cairo::Context,
-    zoom_level: f64,
+pub struct Context<'a>{
+    cr: &'a cairo::Context,
 }
 
-impl Context {
-    pub fn new(cr: cairo::Context, zoom_level: f64) -> Context {
+impl<'a> Context<'a> {
+    pub fn new(cr: &'a cairo::Context, zoom_level: f64, translate: &Vector) -> Context<'a> {
+        cr.translate(translate.x, translate.y);
+        cr.scale(zoom_level, zoom_level);
         Context {
             cr: cr,
-            zoom_level: zoom_level,
         }
     }
 
     pub fn get_zoom_level(&self) -> f64 {
-        self.zoom_level
+        let matrix = self.cr.get_matrix();
+        matrix.x0
     }
 
     pub fn set_source_rgb(&self, color: &RgbColor) {
@@ -57,27 +57,22 @@ impl Context {
     }
 
     pub fn set_line_width(&self, value: f64) {
-        self.cr.set_line_width(value * self.zoom_level);
+        self.cr.set_line_width(value);
     }
 
     pub fn set_dash(&self, dashes: &[f64], offset: f64) {
-        let dashes: Vec<f64> =
-            dashes.iter().map(|x| self.zoom_level * x).collect();
-        self.cr.set_dash(dashes.as_slice(), offset * self.zoom_level);
+        self.cr.set_dash(dashes, offset);
     }
 
     pub fn move_to(&self, pos: &Point) {
-        let pos = pos.scale_by(self.zoom_level);
         self.cr.move_to(pos.x, pos.y);
     }
 
     pub fn line_to(&self, pos: &Point) {
-        let pos = pos.scale_by(self.zoom_level);
         self.cr.line_to(pos.x, pos.y);
     }
 
     pub fn rel_line_to(&self, vector: &Vector) {
-        let vector = vector.clone() * self.zoom_level;
         self.cr.rel_line_to(vector.x, vector.y);
     }
 
@@ -94,8 +89,8 @@ impl Context {
     }
 
     pub fn rectangle(&self, rect: &Rectangle) {
-        let top_left = rect.mins().scale_by(self.zoom_level);
-        let bottom_right = rect.maxs().scale_by(self.zoom_level);
+        let top_left = rect.mins();
+        let bottom_right = rect.maxs();
         let width = (bottom_right.x - top_left.x).abs();
         let height = (bottom_right.y - top_left.y).abs();
         self.cr.rectangle(
@@ -105,10 +100,9 @@ impl Context {
     }
 
     pub fn circle(&self, pos: &Point, radius: f64) {
-        let pos = pos.scale_by(self.zoom_level);
         self.cr.arc(
             pos.x, pos.y,
-            radius * self.zoom_level,
+            radius,
             0.0, (360_f64).to_radians()
         );
     }
@@ -119,10 +113,8 @@ impl Context {
         go_dir: &Vector,
         arrive_dir: &Vector
     ) {
-        let start = segment.a().scale_by(self.zoom_level);
-        let end = segment.b().scale_by(self.zoom_level);
-        let go_dir = go_dir.clone() * self.zoom_level;
-        let arrive_dir = arrive_dir.clone() * self.zoom_level;
+        let start = segment.a();
+        let end = segment.b();
         self.move_to(segment.a());
         self.cr.curve_to(
             // go direction (x, y)
@@ -162,18 +154,34 @@ impl Context {
     pub fn in_fill(&self, pos: &Point) -> bool {
         self.cr.in_fill(pos.x, pos.y)
     }
+
+    pub fn user_to_device(&self, pos: &Point) -> Point {
+        let (x, y) = self.cr.user_to_device(pos.x, pos.y);
+        Point::new(x, y)
+    }
+
+    pub fn user_to_device_rect(&self, rect: &Rectangle) -> Rectangle {
+        let mins = self.user_to_device(rect.mins());
+        let maxs = self.user_to_device(rect.maxs());
+        Rectangle::new(mins, maxs)
+    }
+
+    pub fn device_to_user(&self, pos: &Point) -> Point {
+        let (x, y) = self.cr.device_to_user(pos.x, pos.y);
+        Point::new(x, y)
+    }
+
+    pub fn device_to_user_rect(&self, rect: &Rectangle) -> Rectangle {
+        let mins = self.device_to_user(rect.mins());
+        let maxs = self.device_to_user(rect.maxs());
+        Rectangle::new(mins, maxs)
+    }
 }
 
-impl Deref for Context {
+impl<'a> Deref for Context<'a> {
     type Target = cairo::Context;
 
     fn deref(&self) -> &Self::Target {
         &self.cr
-    }
-}
-
-impl DerefMut for Context {
-    fn deref_mut(&mut self) -> &mut cairo::Context {
-        &mut self.cr
     }
 }

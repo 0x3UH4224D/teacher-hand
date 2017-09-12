@@ -462,12 +462,25 @@ impl DrawingArea {
                 }
 
                 if let Some(val) = page_bound {
+                    let fixed_margin = 100.0;
                     let width = (val.maxs().x - val.mins().x).abs();
                     let height = (val.maxs().y - val.mins().y).abs();
                     me.set_size_request(
-                        (width * 1.3) as i32,
-                        (height * 1.3) as i32
+                        (width + fixed_margin) as i32,
+                        (height + fixed_margin) as i32
                     );
+
+                    let mut translate =
+                        Vector::new(fixed_margin / 2.0, fixed_margin / 2.0);
+                    translate.x += val.mins().x.abs();
+                    translate.y += val.mins().y.abs();
+
+                    {
+                        window.borrow_mut()
+                            .documents[current_doc]
+                            .pages[page_n]
+                            .translate = translate;
+                    }
                 }
 
                 {

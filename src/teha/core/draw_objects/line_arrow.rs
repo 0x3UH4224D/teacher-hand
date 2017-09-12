@@ -452,33 +452,33 @@ impl Draw for LineArrow {
         if self.curve_like {
             cr.save();
             self.draw_go_direction(cr, false);
-            extents.push(cr.stroke_extents());
+            extents.push(cr.user_to_device_rect(&cr.stroke_extents()));
             cr.restore();
 
             cr.save();
             self.draw_arrive_direction(cr, false);
-            extents.push(cr.stroke_extents());
+            extents.push(cr.user_to_device_rect(&cr.stroke_extents()));
             cr.restore();
         }
 
         cr.save();
         self.draw_start_point(cr, false);
-        extents.push(cr.stroke_extents());
+        extents.push(cr.user_to_device_rect(&cr.stroke_extents()));
         cr.restore();
 
         cr.save();
         self.draw_end_point(cr, false);
-        extents.push(cr.stroke_extents());
+        extents.push(cr.user_to_device_rect(&cr.stroke_extents()));
         cr.restore();
 
         cr.save();
         self.draw_segment(cr, false);
-        extents.push(cr.stroke_extents());
+        extents.push(cr.user_to_device_rect(&cr.stroke_extents()));
         cr.restore();
 
         cr.save();
         self.draw_head(cr, false);
-        extents.push(cr.fill_extents());
+        extents.push(cr.user_to_device_rect(&cr.fill_extents()));
         cr.restore();
 
         // cr.save();
@@ -620,19 +620,19 @@ impl Event for LineArrow {
             match self.action {
                 None => return false,
                 Some(Actions::MoveGoDirection) => {
-                    self.move_go_dir(pos);
+                    self.move_go_dir(&pos);
                 },
                 Some(Actions::MoveArriveDirection) => {
-                    self.move_arrive_dir(pos);
+                    self.move_arrive_dir(&pos);
                 },
                 Some(Actions::MoveStartPoint) => {
-                    self.move_start_point(pos);
+                    self.move_start_point(&pos);
                 },
                 Some(Actions::MoveEndPoint) => {
-                    self.move_end_point(pos);
+                    self.move_end_point(&pos);
                 },
                 Some(Actions::MoveBody(..)) => {
-                    self.move_segment(pos);
+                    self.move_segment(&pos);
                 },
             };
         }
@@ -650,7 +650,7 @@ impl Event for LineArrow {
         }
 
         if event.get_button() == 1 {
-            self.action = self.select_controller(pos, cr);
+            self.action = self.select_controller(&pos, cr);
             if let None = self.action {
                 self.selected = false;
                 return false;

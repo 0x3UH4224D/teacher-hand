@@ -23,7 +23,6 @@ use gdk::{self, EventMotion, EventButton, EventKey};
 use gettextrs::*;
 
 use ncollide::bounding_volume::BoundingVolume;
-use alga::linear::{AffineSpace};
 
 use core::context::Context;
 use common::types::*;
@@ -63,48 +62,10 @@ impl Page {
     }
 
     fn page_bound(&self) -> Rectangle {
-        let half_width = self.size.width as f64 / 2.0;
-        let half_height = self.size.height as f64 / 2.0;
-        let top_left = Point::new(-half_width, -half_height);
-        let bottom_right = Point::new(half_width, half_height);
-        Rectangle::new(top_left, bottom_right)
-    }
-
-    fn create_draw_context(
-        &self
-    ) -> Option<(cairo::ImageSurface, Context, Rectangle)> {
-
-        let rect = match self.draw_extents() {
-            None => return None,
-            Some(val) => val,
-        };
-        let width = (rect.maxs().x - rect.mins().x).abs();
-        let height = (rect.maxs().y - rect.mins().y).abs();
-        let surface = cairo::ImageSurface::create(
-            cairo::Format::ARgb32,
-            width as i32,
-            height as i32
-        );
-        let context = Context::new(
-            cairo::Context::new(&surface),
-            self.zoom_level
-        );
-
-        // TODO: this may be done from Context so we can know the translate
-        // from other methods in an wasy way.
-        context.translate(rect.mins().x.abs(), rect.mins().y.abs());
-
-        Some((surface, context, rect))
-    }
-
-    fn create_in_draw_context(&self) -> (cairo::ImageSurface, Context) {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
-        let context = Context::new(
-            cairo::Context::new(&surface),
-            self.zoom_level
-        );
-
-        (surface, context)
+        Rectangle::new(
+            Point::new(0.0, 0.0),
+            Point::new(self.size.width as f64, self.size.height as f64)
+        )
     }
 
     fn line_width(&self) -> f64 {
@@ -112,10 +73,11 @@ impl Page {
     }
 
     pub fn draw(&self, cr: &cairo::Context) {
-        let (surface, context, _) = match self.create_draw_context() {
-            None => return,
-            Some(val) => val,
-        };
+        cr.save();
+        let matrix = cr.get_matrix();
+
+        let context =
+            Context::new(cr, self.zoom_level, &self.translate);
 
         context.save();
         context.set_line_width(self.line_width());
@@ -128,20 +90,22 @@ impl Page {
             context.set_source_rgb(&color);
             context.fill();
         }
+        context.new_path();
         context.restore();
 
         for layer in self.layers.iter() {
             layer.draw(&context);
         }
 
-        cr.save();
-        cr.set_source_surface(&surface, self.translate.x, self.translate.y);
-        cr.paint();
+        cr.set_matrix(matrix);
         cr.restore();
     }
 
     pub fn in_draw(&self, pos: &Point) -> bool {
-        let (_, cr) = self.create_in_draw_context();
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr =
+            Context::new(&cr, self.zoom_level, &self.translate);
         for layer in self.layers.iter() {
             if layer.in_draw(&pos, &cr) {
                 return true;
@@ -151,14 +115,17 @@ impl Page {
     }
 
     pub fn draw_extents(&self) -> Option<Rectangle> {
-        let (_, cr) = self.create_in_draw_context();
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr =
+            Context::new(&cr, self.zoom_level, &Vector::new(0.0, 0.0));
 
         cr.save();
         cr.set_line_width(self.line_width());
         cr.rectangle(&self.page_bound());
 
-        let fill_extents = cr.fill_extents();
-        let stroke_extents = cr.stroke_extents();
+        let fill_extents = cr.user_to_device_rect(&cr.fill_extents());
+        let stroke_extents = cr.user_to_device_rect(&cr.stroke_extents());
         let page_bound = fill_extents.merged(&stroke_extents);
         cr.restore();
         if self.layers.len() == 0 {
@@ -178,32 +145,21 @@ impl Page {
         Some(result)
     }
 
-    fn translate_position(&self, pos: (f64, f64)) -> Option<Point> {
-        let mut translation = match self.draw_extents() {
-            None => return None,
-            Some(val) => Vector::new(-val.mins().x.abs(), -val.mins().y.abs()),
-        };
-        translation -= self.translate.clone() * self.zoom_level;
-        let result = Point::new(pos.0, pos.1).translate_by(&translation);
-        // println!("{:?}", result);
-        Some(result)
-    }
-
     pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr =
+            Context::new(&cr, self.zoom_level, &self.translate);
+        let (x, y) = event.get_position();
+        let pos = cr.device_to_user(&Point::new(x, y));
+
         match self.action {
             Some(Actions::TranslateViewport(_origin_vec)) => {
                 // FIXME: this is not the best way to translateviewport
-                let (x, y) = event.get_position();
-                self.translate = Vector::new(x, y);
+                self.translate = Vector::new(pos.x, pos.y);
             },
             _ => {},
         }
-
-        let (_, cr) = self.create_in_draw_context();
-        let pos = match self.translate_position(event.get_position()) {
-            None => return false,
-            Some(val) => val,
-        };
 
         for layer in self.layers.iter_mut() {
             if layer.motion_notify(event, &pos, &cr) {
@@ -214,11 +170,12 @@ impl Page {
     }
 
     pub fn button_press(&mut self, event: &EventButton) -> bool {
-        let (_, cr) = self.create_in_draw_context();
-        let pos = match self.translate_position(event.get_position()) {
-            None => return false,
-            Some(val) => val,
-        };
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr = Context::new(&cr, self.zoom_level, &self.translate);
+        let (x, y) = event.get_position();
+        let pos = cr.device_to_user(&Point::new(x, y));
+
         for layer in self.layers.iter_mut() {
             if layer.button_press(event, &pos, &cr) {
                 return true;
@@ -228,11 +185,12 @@ impl Page {
     }
 
     pub fn button_release(&mut self, event: &EventButton) -> bool {
-        let (_, cr) = self.create_in_draw_context();
-        let pos = match self.translate_position(event.get_position()) {
-            None => return false,
-            Some(val) => val,
-        };
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr = Context::new(&cr, self.zoom_level, &self.translate);
+        let (x, y) = event.get_position();
+        let pos = cr.device_to_user(&Point::new(x, y));
+
         for layer in self.layers.iter_mut() {
             if layer.button_release(event, &pos, &cr) {
                 return true;
@@ -248,7 +206,9 @@ impl Page {
             }
         }
 
-        let (_, cr) = self.create_in_draw_context();
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr = Context::new(&cr, self.zoom_level, &self.translate);
         for layer in self.layers.iter_mut() {
             if layer.key_press(event, &cr) {
                 return true;
@@ -262,7 +222,9 @@ impl Page {
             self.action = None;
         }
 
-        let (_, cr) = self.create_in_draw_context();
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let cr = cairo::Context::new(&surface);
+        let cr = Context::new(&cr, self.zoom_level, &self.translate);
         for layer in self.layers.iter_mut() {
             if layer.key_release(event, &cr) {
                 return true;
