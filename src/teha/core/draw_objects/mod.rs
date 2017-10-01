@@ -37,6 +37,11 @@ pub trait Draw {
     fn draw_extents(&self, cr: &Context) -> Option<Rectangle>;
 }
 
+pub trait Flip {
+    fn flip_vertical(&mut self);
+    fn flip_horizontal(&mut self);
+}
+
 pub trait Name {
     fn name(&self) -> String;
     fn set_name(&mut self, name: &String);
