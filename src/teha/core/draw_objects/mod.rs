@@ -42,6 +42,17 @@ pub trait Flip {
     fn flip_horizontal(&mut self);
 }
 
+pub trait Order: Draw + Select {
+    fn move_child_forward(&mut self, index: usize);
+    fn move_selected_children_forward(&mut self);
+    fn move_child_to_front(&mut self, index: usize);
+    fn move_selected_children_to_front(&mut self);
+    fn move_child_backward(&mut self, index: usize);
+    fn move_selected_children_backward(&mut self);
+    fn move_child_to_rear(&mut self, index: usize);
+    fn move_selected_children_to_rear(&mut self);
+}
+
 pub trait Rotate {
     fn rotate_left(&mut self);
     fn rotate_right(&mut self);
