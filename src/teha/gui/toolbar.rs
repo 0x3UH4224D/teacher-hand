@@ -31,13 +31,13 @@ use common::types::*;
 pub struct Toolbar {
     parent: gtk::Stack,
     // shapes
-    shape_message_box: gtk::RadioButton,
-    shape_curve_arrow: gtk::RadioButton,
-    shape_line_arrow: gtk::RadioButton,
-    shape_text_box: gtk::RadioButton,
-    shape_highlighter: gtk::RadioButton,
-    shape_sticker: gtk::RadioButton,
-    shape_blur_box: gtk::RadioButton,
+    message_box: gtk::RadioButton,
+    curve_arrow: gtk::RadioButton,
+    line_arrow: gtk::RadioButton,
+    text_box: gtk::RadioButton,
+    highlighter: gtk::RadioButton,
+    sticker: gtk::RadioButton,
+    blur_box: gtk::RadioButton,
 }
 
 impl Toolbar {
@@ -45,30 +45,30 @@ impl Toolbar {
         let parent: gtk::Stack =
             builder.get_object("ed_toolbar").unwrap();
 
-        let shape_message_box: gtk::RadioButton =
-            builder.get_object("ed_shape_message_box").unwrap();
-        let shape_curve_arrow: gtk::RadioButton =
-            builder.get_object("ed_shape_curve_arrow").unwrap();
-        let shape_line_arrow: gtk::RadioButton =
-            builder.get_object("ed_shape_line_arrow").unwrap();
-        let shape_text_box: gtk::RadioButton =
-            builder.get_object("ed_shape_text_box").unwrap();
-        let shape_highlighter: gtk::RadioButton =
-            builder.get_object("ed_shape_highlighter").unwrap();
-        let shape_sticker: gtk::RadioButton =
-            builder.get_object("ed_shape_sticker").unwrap();
-        let shape_blur_box: gtk::RadioButton =
-            builder.get_object("ed_shape_blur_box").unwrap();
+        let message_box: gtk::RadioButton =
+            builder.get_object("ed_tb_message_box").unwrap();
+        let curve_arrow: gtk::RadioButton =
+            builder.get_object("ed_tb_curve_arrow").unwrap();
+        let line_arrow: gtk::RadioButton =
+            builder.get_object("ed_tb_line_arrow").unwrap();
+        let text_box: gtk::RadioButton =
+            builder.get_object("ed_tb_text_box").unwrap();
+        let highlighter: gtk::RadioButton =
+            builder.get_object("ed_tb_highlighter").unwrap();
+        let sticker: gtk::RadioButton =
+            builder.get_object("ed_tb_sticker").unwrap();
+        let blur_box: gtk::RadioButton =
+            builder.get_object("ed_tb_blur_box").unwrap();
 
         Toolbar {
             parent: parent,
-            shape_message_box: shape_message_box,
-            shape_curve_arrow: shape_curve_arrow,
-            shape_line_arrow: shape_line_arrow,
-            shape_text_box: shape_text_box,
-            shape_highlighter: shape_highlighter,
-            shape_sticker: shape_sticker,
-            shape_blur_box: shape_blur_box,
+            message_box: message_box,
+            curve_arrow: curve_arrow,
+            line_arrow: line_arrow,
+            text_box: text_box,
+            highlighter: highlighter,
+            sticker: sticker,
+            blur_box: blur_box,
         }
     }
 
@@ -76,32 +76,32 @@ impl Toolbar {
         self.parent.clone()
     }
 
-    pub fn get_shape_message_box(&self) -> gtk::RadioButton {
-        self.shape_message_box.clone()
+    pub fn get_message_box(&self) -> gtk::RadioButton {
+        self.message_box.clone()
     }
 
-    pub fn get_shape_curve_arrow(self) -> gtk::RadioButton {
-        self.shape_curve_arrow.clone()
+    pub fn get_curve_arrow(self) -> gtk::RadioButton {
+        self.curve_arrow.clone()
     }
 
-    pub fn get_shape_line_arrow(&self) -> gtk::RadioButton {
-        self.shape_line_arrow.clone()
+    pub fn get_line_arrow(&self) -> gtk::RadioButton {
+        self.line_arrow.clone()
     }
 
-    pub fn get_shape_text_box(&self) -> gtk::RadioButton {
-        self.shape_text_box.clone()
+    pub fn get_text_box(&self) -> gtk::RadioButton {
+        self.text_box.clone()
     }
 
-    pub fn get_shape_highlighter(&self) -> gtk::RadioButton {
-        self.shape_highlighter.clone()
+    pub fn get_highlighter(&self) -> gtk::RadioButton {
+        self.highlighter.clone()
     }
 
-    pub fn get_shape_sticker(&self) -> gtk::RadioButton {
-        self.shape_sticker.clone()
+    pub fn get_sticker(&self) -> gtk::RadioButton {
+        self.sticker.clone()
     }
 
-    pub fn get_shape_blur_box(&self) -> gtk::RadioButton {
-        self.shape_blur_box.clone()
+    pub fn get_blur_box(&self) -> gtk::RadioButton {
+        self.blur_box.clone()
     }
 
     pub fn connect_ui(app: Rc<RefCell<Application>>) {
@@ -133,22 +133,24 @@ impl Toolbar {
             }
         }
 
-        // shape_message_box
+        // message_box
 
-        // shape_curve_arrow
+        // curve_arrow
         {
             let window = window.clone();
-            let shape_curve_arrow = toolbar.borrow().shape_curve_arrow.clone();
-            shape_curve_arrow.connect_property_active_notify(move |me| {
+            toolbar.borrow()
+                   .curve_arrow
+                   .connect_property_active_notify(move |me| {
                 line_arrow(me, line_arrow::Mode::CreatingCurveArrow, &window);
             });
         }
 
-        // shape_line_arrow
+        // line_arrow
         {
             let window = window.clone();
-            let shape_line_arrow = toolbar.borrow().shape_line_arrow.clone();
-            shape_line_arrow.connect_property_active_notify(move |me| {
+            toolbar.borrow()
+                   .line_arrow
+                   .connect_property_active_notify(move |me| {
                 line_arrow(me, line_arrow::Mode::CreatingLineArrow, &window);
             });
         }
