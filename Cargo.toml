@@ -1,6 +1,6 @@
 [package]
 name = "teacher-hand"
-version = "0.1.0"
+version = "0.15.0"
 authors = ["Muhannad Alrusayni <Muhannad.Alrusayni@gmail.com>"]
 license = "GPL"
 build = "build.rs"

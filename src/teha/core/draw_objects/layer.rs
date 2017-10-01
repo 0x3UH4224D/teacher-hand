@@ -17,8 +17,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-use cairo;
 use gdk::{EventMotion, EventButton};
+use gtk::{self, NotebookExtManual};
 
 use gettextrs::*;
 
@@ -26,39 +26,23 @@ use ncollide::bounding_volume::BoundingVolume;
 
 use core::context::Context;
 use common::types::*;
-use super::{Draw, Name, Lock, Visible, Container, Event, ShapeTrait, LineArrow};
+use super::*;
 
-pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event {}
+pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event {
+    fn remove_shapes_in_creating_mode(&mut self);
+    fn unselect_all_shapes(&mut self);
+}
 
 pub struct Layer {
-    pub children: Vec<Box<ShapeTrait>>,
-    pub name: String,
-    pub lock: bool,
-    pub visible: bool,
+    children: Vec<Box<ShapeTrait>>,
+    name: String,
+    lock: bool,
+    visible: bool,
 }
 
 impl Layer {
     pub fn new() -> Self {
-        // FIXME: this line for testing/debugging
-        // and should be removeed when release
-
-        let mut line_arrow = LineArrow::new(
-            RgbaColor::new(0.5, 0.5, 1.0, 1.0),
-            10.0,
-            cairo::LineCap::Round,
-            cairo::LineJoin::Round,
-            vec![],
-            0.0,
-            true,
-            Segment::new(Point::new(-50.0, -50.0),
-                         Point::new(50.0, 50.0)),
-        );
-        line_arrow.go_dir = Vector::new(10.0, 80.0);
-        line_arrow.arrive_dir = Vector::new(-10.0, -80.0);
-
-        let mut children: Vec<Box<ShapeTrait>> = vec![];
-        children.push(Box::new(line_arrow));
-
+        let children: Vec<Box<ShapeTrait>> = vec![];
         Layer {
             children: children,
             name: gettext("Unnamed Layer"),
@@ -79,7 +63,36 @@ impl Default for Layer {
     }
 }
 
-impl LayerTrait for Layer {}
+impl LayerTrait for Layer {
+    fn remove_shapes_in_creating_mode(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        let mut i = self.children.len() - 1;
+        loop {
+            if self.children[i].in_creating_mode() {
+                self.children.remove(i);
+            }
+
+            if i == 0 {
+                break;
+            } else {
+                i -= 1;
+            }
+        }
+    }
+
+    fn unselect_all_shapes(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        for shape in self.children.iter_mut() {
+            shape.unselect();
+        }
+    }
+}
 
 impl Draw for Layer {
     fn draw(&self, cr: &Context) {
@@ -124,12 +137,12 @@ impl Draw for Layer {
 }
 
 impl Name for Layer {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.clone()
     }
 
-    fn set_name(&mut self, name: &str) {
-        self.name = name.to_string();
+    fn set_name(&mut self, name: &String) {
+        self.name.clone_from(name);
     }
 }
 
@@ -191,6 +204,18 @@ impl Container for Layer {
             Some(self.children.remove(index))
         }
     }
+
+    fn get_children(&self) -> &Vec<Box<ShapeTrait>> {
+        &self.children
+    }
+
+    fn get_mut_children(&mut self) -> &mut Vec<Box<ShapeTrait>> {
+        &mut self.children
+    }
+
+    fn set_children(&mut self, children: Vec<Box<ShapeTrait>>) {
+        self.children = children;
+    }
 }
 
 impl Event for Layer {
@@ -200,7 +225,7 @@ impl Event for Layer {
         pos: &Point,
         cr: &Context
     ) -> bool {
-        for child in self.children.iter_mut() {
+        for child in self.children.iter_mut().rev() {
             if child.motion_notify(event, pos, cr) {
                 return true;
             }
@@ -212,11 +237,24 @@ impl Event for Layer {
         &mut self,
         event: &EventButton,
         pos: &Point,
-        cr: &Context
+        cr: &Context,
+        options_widget: &gtk::Notebook
     ) -> bool {
-        for child in self.children.iter_mut() {
-            if child.button_press(event, pos, cr) {
-                return true;
+        let mut result = false;
+
+        // clean up options widget
+        let n_pages = options_widget.get_n_pages();
+        for _ in 0..n_pages {
+            options_widget.remove_page(Some(0));
+        }
+
+        // call children method
+        for child in self.children.iter_mut().rev() {
+            if child.button_press(event, pos, cr, options_widget) && !result {
+                child.select();
+                result = true;
+            } else {
+                child.unselect();
             }
         }
         false
@@ -228,7 +266,7 @@ impl Event for Layer {
         pos: &Point,
         cr: &Context
     ) -> bool {
-        for child in self.children.iter_mut() {
+        for child in self.children.iter_mut().rev() {
             if child.button_release(event, pos, cr) {
                 return true;
             }

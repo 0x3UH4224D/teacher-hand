@@ -18,7 +18,8 @@
 //
 
 use cairo;
-use gdk::{self, EventMotion, EventButton, EventKey};
+use gdk::{EventMotion, EventButton, EventKey};
+use gtk::{self};
 
 use gettextrs::*;
 
@@ -26,23 +27,20 @@ use ncollide::bounding_volume::BoundingVolume;
 
 use core::context::Context;
 use common::types::*;
-use super::{Name, LayerTrait, Layer};
+use super::{Name, Layer};
+use super::layer::LayerTrait;
 
-pub enum Actions {
-    TranslateViewport(Vector),
-}
 
 pub struct Page {
-    pub size: Size<i32>,
-    pub layers: Vec<Box<LayerTrait>>,
-    pub color: Option<RgbColor>,
-    pub border: Option<RgbColor>,
-    pub grid: Option<RgbColor>,
-    pub name: String,
-    pub translate: Vector,
-    pub zoom_level: f64,
-    pub action: Option<Actions>,
-    pub drawarea_size: Size<i32>,
+    size: Size<i32>,
+    layers: Vec<Box<LayerTrait>>,
+    active_layer_index: usize,
+    color: Option<RgbColor>,
+    border: Option<RgbColor>,
+    grid: Option<RgbColor>,
+    name: String,
+    translate: Vector,
+    zoom_level: f64,
 }
 
 impl Page {
@@ -50,15 +48,130 @@ impl Page {
         Page {
             size: Size::new(800, 600),
             layers: vec![Box::new(Layer::new())],
+            active_layer_index: 0,
             color: Some(RgbColor::new(1.0, 1.0, 1.0)),
             border: Some(RgbColor::new(0.47, 0.47, 0.47)), // #797979
             grid: None,
             name: gettext("Unnamed Page"),
             translate: Vector::new(0.0, 0.0),
             zoom_level: 1.0,
-            action: None,
-            drawarea_size: Size::new(0, 0),
         }
+    }
+
+    pub fn get_size(&self) -> &Size<i32> {
+        &self.size
+    }
+
+    pub fn get_mut_size(&mut self) -> &mut Size<i32> {
+        &mut self.size
+    }
+
+    pub fn set_size(&mut self, size: Size<i32>) {
+        self.size = size;
+    }
+
+    pub fn get_layers(&self) -> &Vec<Box<LayerTrait>> {
+        &self.layers
+    }
+
+    pub fn get_mut_layers(&mut self) -> &mut Vec<Box<LayerTrait>> {
+        &mut self.layers
+    }
+
+    pub fn set_layers(&mut self, layers: Vec<Box<LayerTrait>>) {
+        self.layers = layers
+    }
+
+    pub fn get_active_layer(&self) -> &Box<LayerTrait> {
+        &self.layers[self.active_layer_index]
+    }
+
+    pub fn get_mut_active_layer(&mut self) -> &mut Box<LayerTrait> {
+        &mut self.layers[self.active_layer_index]
+    }
+
+    pub fn get_active_layer_index(&self) -> usize {
+        self.active_layer_index
+    }
+
+    pub fn set_active_layer_index(&mut self, index: usize) {
+        self.active_layer_index = index;
+    }
+
+    pub fn remove_shapes_in_creating_mode(&mut self) {
+        for layer in self.layers.iter_mut() {
+            layer.remove_shapes_in_creating_mode();
+        }
+    }
+
+    pub fn unselect_all_shapes(&mut self) {
+        for layer in self.layers.iter_mut() {
+            layer.unselect_all_shapes();
+        }
+    }
+
+    pub fn get_color(&self) -> &Option<RgbColor> {
+        &self.color
+    }
+
+    pub fn get_mut_color(&mut self) -> &mut Option<RgbColor> {
+        &mut self.color
+    }
+
+    pub fn set_color(&mut self, color: Option<RgbColor>) {
+        self.color = color;
+    }
+
+    pub fn get_border(&self) -> &Option<RgbColor> {
+        &self.border
+    }
+
+    pub fn get_mut_border(&mut self) -> &mut Option<RgbColor> {
+        &mut self.border
+    }
+
+    pub fn get_grid(&self) -> &Option<RgbColor> {
+        &self.grid
+    }
+
+    pub fn get_mut_grid(&mut self) -> &mut Option<RgbColor> {
+        &mut self.grid
+    }
+
+    pub fn set_grid(&mut self, grid: Option<RgbColor>) {
+        self.grid = grid;
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_mut_name(&mut self) -> &mut String {
+        &mut self.name
+    }
+
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    pub fn get_translate(&self) -> &Vector {
+        &self.translate
+    }
+
+    pub fn get_mut_translate(&mut self) -> &mut Vector {
+        &mut self.translate
+    }
+
+    pub fn set_translate(&mut self, translate: Vector) {
+        self.translate = translate;
+    }
+
+    pub fn get_zoom_level(&self) -> f64 {
+        self.zoom_level
+    }
+
+    pub fn set_zoom_level(&mut self, zoom_level: f64) {
+        self.zoom_level = zoom_level;
     }
 
     fn page_bound(&self) -> Rectangle {
@@ -102,7 +215,8 @@ impl Page {
     }
 
     pub fn in_draw(&self, pos: &Point) -> bool {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr =
             Context::new(&cr, self.zoom_level, &self.translate);
@@ -115,7 +229,8 @@ impl Page {
     }
 
     pub fn draw_extents(&self) -> Option<Rectangle> {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr =
             Context::new(&cr, self.zoom_level, &Vector::new(0.0, 0.0));
@@ -146,22 +261,14 @@ impl Page {
     }
 
     pub fn motion_notify(&mut self, event: &EventMotion) -> bool {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
-        let cr =
-            Context::new(&cr, self.zoom_level, &self.translate);
+        let cr = Context::new(&cr, self.zoom_level, &self.translate);
         let (x, y) = event.get_position();
         let pos = cr.device_to_user(&Point::new(x, y));
 
-        match self.action {
-            Some(Actions::TranslateViewport(_origin_vec)) => {
-                // FIXME: this is not the best way to translateviewport
-                self.translate = Vector::new(pos.x, pos.y);
-            },
-            _ => {},
-        }
-
-        for layer in self.layers.iter_mut() {
+        for layer in self.layers.iter_mut().rev() {
             if layer.motion_notify(event, &pos, &cr) {
                 return true;
             }
@@ -169,15 +276,18 @@ impl Page {
         false
     }
 
-    pub fn button_press(&mut self, event: &EventButton) -> bool {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+    pub fn button_press(
+        &mut self, event: &EventButton, options_widget: &gtk::Notebook
+    ) -> bool {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr = Context::new(&cr, self.zoom_level, &self.translate);
         let (x, y) = event.get_position();
         let pos = cr.device_to_user(&Point::new(x, y));
 
-        for layer in self.layers.iter_mut() {
-            if layer.button_press(event, &pos, &cr) {
+        for layer in self.layers.iter_mut().rev() {
+            if layer.button_press(event, &pos, &cr, options_widget) {
                 return true;
             }
         }
@@ -185,13 +295,14 @@ impl Page {
     }
 
     pub fn button_release(&mut self, event: &EventButton) -> bool {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr = Context::new(&cr, self.zoom_level, &self.translate);
         let (x, y) = event.get_position();
         let pos = cr.device_to_user(&Point::new(x, y));
 
-        for layer in self.layers.iter_mut() {
+        for layer in self.layers.iter_mut().rev() {
             if layer.button_release(event, &pos, &cr) {
                 return true;
             }
@@ -200,16 +311,11 @@ impl Page {
     }
 
     pub fn key_press(&mut self, event: &EventKey) -> bool {
-        if event.get_keyval() == gdk::enums::key::space {
-            if self.action.is_none() {
-                self.action = Some(Actions::TranslateViewport(self.translate.clone()));
-            }
-        }
-
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr = Context::new(&cr, self.zoom_level, &self.translate);
-        for layer in self.layers.iter_mut() {
+        for layer in self.layers.iter_mut().rev() {
             if layer.key_press(event, &cr) {
                 return true;
             }
@@ -218,14 +324,11 @@ impl Page {
     }
 
     pub fn key_release(&mut self, event: &EventKey) -> bool {
-        if self.action.is_some() {
-            self.action = None;
-        }
-
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0);
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 0, 0)
+            .expect("Cairo: couldn't create surface");
         let cr = cairo::Context::new(&surface);
         let cr = Context::new(&cr, self.zoom_level, &self.translate);
-        for layer in self.layers.iter_mut() {
+        for layer in self.layers.iter_mut().rev() {
             if layer.key_release(event, &cr) {
                 return true;
             }
@@ -235,11 +338,11 @@ impl Page {
 }
 
 impl Name for Page {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> String {
+        self.name.clone()
     }
 
-    fn set_name(&mut self, name: &str) {
-        self.name = name.to_string();
+    fn set_name(&mut self, name: &String) {
+        self.name.clone_from(name);
     }
 }

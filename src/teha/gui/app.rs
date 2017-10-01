@@ -22,20 +22,20 @@ use std::cell::RefCell;
 
 use gettextrs::*;
 
-use gtk::{self, ApplicationExt, WidgetExt};
+use gtk::{self, WidgetExt, BuilderExt, GtkApplicationExt};
 use gio::{self, SimpleAction, SimpleActionExt, ActionMapExt, MenuExt};
 
 use super::*;
 use super::main_window::MainWindow;
 
 pub struct Application {
-    pub parent: gtk::Application,
-    pub builder: gtk::Builder,
-    pub settings: gio::Settings,
-    pub main_window: Option<Rc<RefCell<MainWindow>>>,
-    pub shortcuts_window: gtk::ShortcutsWindow,
-    pub view_mode: ViewMode,
-    pub last_view_mode: ViewMode,
+    parent: gtk::Application,
+    builder: gtk::Builder,
+    settings: gio::Settings,
+    main_window: Rc<RefCell<MainWindow>>,
+    shortcuts_window: gtk::ShortcutsWindow,
+    view_mode: ViewMode,
+    last_view_mode: ViewMode,
 }
 
 impl Application {
@@ -54,18 +54,17 @@ impl Application {
             gtk::Inhibit(true)
         });
 
-        let mut teha_app = Application {
+        let main_window = MainWindow::new(builder.clone(), app.clone());
+
+        let teha_app = Application {
             parent: app,
             builder: builder,
-            main_window: None,
+            main_window: Rc::new(RefCell::new(main_window)),
             shortcuts_window: shortcuts_window,
             settings: settings,
             view_mode: ViewMode::StartUp,
             last_view_mode: ViewMode::StartUp,
         };
-
-        let main_window = MainWindow::new(&teha_app);
-        teha_app.main_window = Some(Rc::new(RefCell::new(main_window)));
 
         teha_app.setup_app_menu();
 
@@ -76,11 +75,47 @@ impl Application {
 
         {
             let rc_app = rc_app.borrow();
-            let window = rc_app.main_window.as_ref().unwrap().borrow();
+            let window = rc_app.main_window.borrow();
             window.show();
         }
 
         rc_app
+    }
+
+    pub fn get_parent(&self) -> gtk::Application {
+        self.parent.clone()
+    }
+
+    pub fn get_builder(&self) -> gtk::Builder {
+        self.builder.clone()
+    }
+
+    pub fn get_settings(&self) -> gio::Settings {
+        self.settings.clone()
+    }
+
+    pub fn get_main_window(&self) -> Rc<RefCell<MainWindow>> {
+        self.main_window.clone()
+    }
+
+    pub fn get_shortcuts_window(&self) -> gtk::ShortcutsWindow {
+        self.shortcuts_window.clone()
+    }
+
+    pub fn get_view_mode(&self) -> ViewMode {
+        self.view_mode
+    }
+
+    pub fn set_view_mode(&mut self, mode: ViewMode) {
+        self.view_mode = mode;
+    }
+
+    pub fn get_last_view_mode(&self) -> ViewMode {
+        self.last_view_mode
+    }
+
+    pub fn set_last_view_mode(&mut self, mode: ViewMode) {
+        self.last_view_mode = mode;
     }
 
     pub fn update_view(&mut self, mode: ViewMode) {
@@ -90,10 +125,10 @@ impl Application {
         }
         self.view_mode = mode;
 
-        let window = self.main_window.as_ref().unwrap().clone();
+        let window = self.main_window.clone();
         window.borrow_mut().update_view(mode);
 
-        let header_bar = window.borrow().header_bar.as_ref().unwrap().clone();
+        let header_bar = window.borrow().get_header_bar();
         header_bar.borrow_mut().update_view(mode);
     }
 

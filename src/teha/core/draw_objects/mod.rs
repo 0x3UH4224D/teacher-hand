@@ -21,11 +21,12 @@ pub mod page;
 pub mod layer;
 pub mod line_arrow;
 
-pub use self::page::*;
-pub use self::layer::*;
-pub use self::line_arrow::*;
+pub use self::page::Page;
+pub use self::layer::Layer;
+pub use self::line_arrow::LineArrow;
 
 use gdk::{EventMotion, EventButton, EventKey};
+use gtk::{self};
 
 use core::context::Context;
 use common::types::*;
@@ -37,8 +38,13 @@ pub trait Draw {
 }
 
 pub trait Name {
-    fn name(&self) -> &str;
-    fn set_name(&mut self, name: &str);
+    fn name(&self) -> String;
+    fn set_name(&mut self, name: &String);
+}
+
+pub trait Color {
+    fn get_color(&self) -> RgbaColor;
+    fn set_color(&mut self, color: &RgbaColor);
 }
 
 pub trait Move {
@@ -46,6 +52,13 @@ pub trait Move {
     fn move_to(&mut self, &Point);
     fn translate_by(&mut self, &Translation);
     fn rotate_by(&mut self, &Rotation, &Vector);
+}
+
+pub trait Select {
+    fn is_selected(&self) -> bool;
+    fn select(&mut self);
+    fn unselect(&mut self);
+    fn toggle_select(&mut self) -> bool;
 }
 
 pub trait Lock {
@@ -65,6 +78,9 @@ pub trait Visible {
 pub trait Container {
     fn add(&mut self, child: Box<ShapeTrait>);
     fn remove(&mut self, index: usize) -> Option<Box<ShapeTrait>>;
+    fn get_children(&self) -> &Vec<Box<ShapeTrait>>;
+    fn get_mut_children(&mut self) -> &mut Vec<Box<ShapeTrait>>;
+    fn set_children(&mut self, children: Vec<Box<ShapeTrait>>);
 }
 
 pub trait Event {
@@ -82,7 +98,8 @@ pub trait Event {
         &mut self,
         event: &EventButton,
         pos: &Point,
-        cr: &Context
+        cr: &Context,
+        options_widget: &gtk::Notebook
     ) -> bool { false }
     #[allow(unused_variables)]
     fn button_release(
@@ -105,6 +122,11 @@ pub trait Event {
     ) -> bool { false }
 }
 
-pub trait ShapeTrait: Draw + Name + Move + Lock +
-          Visible + Container + Event {}
+pub trait Mode {
+    fn in_creating_mode(&self) -> bool;
+    fn in_editing_mode(&self) -> bool;
+}
+
+pub trait ShapeTrait: Draw + Name + Color + Move + Select + Lock + Visible +
+                      Container + Event + Mode {}
 

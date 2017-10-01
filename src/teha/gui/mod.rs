@@ -19,28 +19,9 @@
 
 pub mod app;
 pub mod main_window;
-
-pub enum Tool {
-    Controller,
-    StyleCloner,
-    Cropper,
-    Eraser,
-}
-
-pub enum Object {
-    MessageBox,
-    ArrowLine,
-    Line,
-    Sticker,
-    Highlighter,
-    TextBox,
-    BlurBox
-}
-
-pub enum CurrentTool {
-    Tool(Tool),
-    Object(Object),
-}
+pub mod header_bar;
+pub mod drawing_area;
+pub mod toolbar;
 
 #[derive(Copy, Clone)]
 pub enum ViewMode {
