@@ -22,6 +22,7 @@ pub mod main_window;
 pub mod header_bar;
 pub mod drawing_area;
 pub mod toolbar;
+pub mod controlbar;
 
 #[derive(Copy, Clone)]
 pub enum ViewMode {

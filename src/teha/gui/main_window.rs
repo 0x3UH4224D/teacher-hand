@@ -27,6 +27,7 @@ use super::app::Application;
 use super::header_bar::HeaderBar;
 use super::drawing_area::DrawingArea;
 use super::toolbar::Toolbar;
+use super::controlbar::Controlbar;
 use core::Document;
 
 // note: acronyms names used here refer to:
@@ -39,6 +40,7 @@ pub struct MainWindow {
     header_bar: Rc<RefCell<HeaderBar>>,
     drawing_area: Rc<RefCell<DrawingArea>>,
     toolbar: Rc<RefCell<Toolbar>>,
+    controlbar: Rc<RefCell<Controlbar>>,
     documents: Vec<Document>,
     active_document_index: usize,
     root_stack: gtk::Stack,
@@ -93,12 +95,14 @@ impl MainWindow {
         let header_bar = HeaderBar::new(builder.clone());
         let drawing_area = DrawingArea::new(builder.clone());
         let toolbar = Toolbar::new(builder.clone());
+        let controlbar = Controlbar::new(builder.clone());
 
         MainWindow {
             parent: main_window,
             header_bar: Rc::new(RefCell::new(header_bar)),
             drawing_area: Rc::new(RefCell::new(drawing_area)),
             toolbar: Rc::new(RefCell::new(toolbar)),
+            controlbar: Rc::new(RefCell::new(controlbar)),
             documents: vec![],
             active_document_index: 0,
             root_stack: root_stack,
@@ -131,6 +135,10 @@ impl MainWindow {
 
     pub fn get_toolbar(&self) -> Rc<RefCell<Toolbar>> {
         self.toolbar.clone()
+    }
+
+    pub fn get_controlbar(&self) -> Rc<RefCell<Controlbar>> {
+        self.controlbar.clone()
     }
 
     pub fn get_documents(&self) -> &Vec<Document> {
@@ -245,6 +253,7 @@ impl MainWindow {
         HeaderBar::connect_ui(app.clone());
         DrawingArea::connect_ui(app.clone());
         Toolbar::connect_ui(app.clone());
+        Controlbar::connect_ui(app.clone());
     }
 }
 
