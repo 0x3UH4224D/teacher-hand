@@ -42,6 +42,11 @@ pub trait Flip {
     fn flip_horizontal(&mut self);
 }
 
+pub trait Rotate {
+    fn rotate_left(&mut self);
+    fn rotate_right(&mut self);
+}
+
 pub trait Name {
     fn name(&self) -> String;
     fn set_name(&mut self, name: &String);
