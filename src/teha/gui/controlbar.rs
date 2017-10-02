@@ -112,5 +112,57 @@ impl Controlbar {
         let teha_app = app.borrow();
         let window = teha_app.get_main_window();
         let controlbar = window.borrow().get_controlbar();
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .move_forward
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .move_selected_children_forward();
+            });
+        }
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .move_to_front
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .move_selected_children_to_front();
+            });
+        }
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .move_backward
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .move_selected_children_backward();
+            });
+        }
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .move_to_rear
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .move_selected_children_to_rear();
+            });
+        }
     }
 }

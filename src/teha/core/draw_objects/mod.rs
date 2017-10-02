@@ -42,15 +42,141 @@ pub trait Flip {
     fn flip_horizontal(&mut self);
 }
 
-pub trait Order: Draw + Select {
-    fn move_child_forward(&mut self, index: usize);
-    fn move_selected_children_forward(&mut self);
-    fn move_child_to_front(&mut self, index: usize);
-    fn move_selected_children_to_front(&mut self);
-    fn move_child_backward(&mut self, index: usize);
-    fn move_selected_children_backward(&mut self);
-    fn move_child_to_rear(&mut self, index: usize);
-    fn move_selected_children_to_rear(&mut self);
+pub trait Order: Container
+    where ShapeTrait: Select {
+
+    fn move_child_forward(&mut self, index: usize) -> bool {
+        // exit if index is out of bounds or
+        // exit if there is less than two shapes or
+        // exit if index is the last shape in the list
+        if self.get_children().len() - 1 < index ||
+           self.get_children().len() < 2 ||
+           self.get_children().len() - 1 == index {
+            return false;
+        }
+
+        self.get_mut_children().swap(index, index + 1);
+        true
+    }
+
+    fn move_selected_children_forward(&mut self) {
+        // exit if there is less than two shapes or
+        if self.get_children().len() < 2 {
+            return;
+        }
+
+        let mut i = self.get_children().len() - 2;
+        loop {
+            if self.get_children()[i].is_selected() &&
+              !self.get_children()[i + 1].is_selected() {
+                self.move_child_forward(i);
+            }
+
+            if i == 0 {
+                break;
+            } else {
+                i -= 1;
+            }
+        }
+    }
+
+    fn move_child_to_front(&mut self, index: usize) -> bool {
+        // exit if index is out of bounds or
+        // exit if there is less than two shapes or
+        // exit if index is the last shape in the list
+        if self.get_children().len() - 1 < index ||
+           self.get_children().len() < 2 ||
+           self.get_children().len() - 1 == index {
+            return false;
+        }
+
+        let shape = self.get_mut_children().remove(index);
+        self.get_mut_children().push(shape);
+        true
+    }
+
+    fn move_selected_children_to_front(&mut self) {
+        let mut shapes = vec![];
+        let mut i = 0;
+        while i < self.get_children().len() {
+            if self.get_children()[i].is_selected() {
+                shapes.push(self.get_mut_children().remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        if !shapes.is_empty() {
+            self.get_mut_children().append(&mut shapes);
+        }
+    }
+
+    fn move_child_backward(&mut self, index: usize) -> bool {
+        // exit if index is out of bounds or
+        // exit if there is less than two shapes or
+        // exit if index is the first shape in the list
+        if self.get_children().len() - 1 < index ||
+           self.get_children().len() < 2 ||
+           0 == index {
+            return false;
+        }
+
+        self.get_mut_children().swap(index, index - 1);
+        true
+    }
+
+    fn move_selected_children_backward(&mut self) {
+        // exit if there is less than two shapes or
+        if self.get_children().len() < 2 {
+            return;
+        }
+
+        let mut i = 1;
+        loop {
+            if self.get_children()[i].is_selected() &&
+              !self.get_children()[i - 1].is_selected() {
+                self.move_child_backward(i);
+            }
+
+            if i == self.get_children().len() - 1 {
+                break;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn move_child_to_rear(&mut self, index: usize) -> bool {
+        // exit if index is out of bounds or
+        // exit if there is less than two shapes or
+        // exit if index is the last shape in the list
+        if self.get_children().len() - 1 < index ||
+           self.get_children().len() < 2 ||
+           0 == index {
+            return false;
+        }
+
+        let shape = self.get_mut_children().remove(index);
+        self.get_mut_children().insert(0, shape);
+        true
+    }
+
+    fn move_selected_children_to_rear(&mut self) {
+        let mut shapes = vec![];
+        let mut i = 0;
+        while i < self.get_children().len() {
+            if self.get_children()[i].is_selected() {
+                shapes.push(self.get_mut_children().remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        if !shapes.is_empty() {
+            shapes.append(self.get_mut_children());
+            *self.get_mut_children() = shapes;
+        }
+    }
 }
 
 pub trait Rotate {
@@ -149,5 +275,5 @@ pub trait Mode {
 }
 
 pub trait ShapeTrait: Draw + Name + Color + Move + Select + Lock + Visible +
-                      Container + Event + Mode {}
+                      Container + Event + Mode + Order {}
 

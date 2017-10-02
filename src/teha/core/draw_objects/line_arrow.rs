@@ -991,6 +991,7 @@ impl LineArrow {
     }
 }
 
+impl Order for LineArrow {}
 impl ShapeTrait for LineArrow {}
 
 impl Draw for LineArrow {

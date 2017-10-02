@@ -28,7 +28,7 @@ use core::context::Context;
 use common::types::*;
 use super::*;
 
-pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event {
+pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event + Order {
     fn remove_shapes_in_creating_mode(&mut self);
     fn unselect_all_shapes(&mut self);
 }
@@ -63,6 +63,7 @@ impl Default for Layer {
     }
 }
 
+impl Order for Layer {}
 impl LayerTrait for Layer {
     fn remove_shapes_in_creating_mode(&mut self) {
         if self.children.is_empty() {
