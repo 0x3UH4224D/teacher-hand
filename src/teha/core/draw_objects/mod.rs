@@ -275,5 +275,5 @@ pub trait Mode {
 }
 
 pub trait ShapeTrait: Draw + Name + Color + Move + Select + Lock + Visible +
-                      Container + Event + Mode + Order + Flip {}
+                      Container + Event + Mode + Order + Flip + Rotate {}
 

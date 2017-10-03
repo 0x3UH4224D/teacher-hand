@@ -33,6 +33,8 @@ pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event + Order {
     fn unselect_all_shapes(&mut self);
     fn flip_selected_children_horizontally(&mut self);
     fn flip_selected_children_vertically(&mut self);
+    fn rotate_selected_children_to_left(&mut self);
+    fn rotate_selected_children_to_right(&mut self);
 }
 
 pub struct Layer {
@@ -116,6 +118,30 @@ impl LayerTrait for Layer {
         for shape in self.children.iter_mut() {
             if shape.is_selected() {
                 shape.flip_horizontal();
+            }
+        }
+    }
+
+    fn rotate_selected_children_to_left(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        for shape in self.children.iter_mut() {
+            if shape.is_selected() {
+                shape.rotate_left();
+            }
+        }
+    }
+
+    fn rotate_selected_children_to_right(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        for shape in self.children.iter_mut() {
+            if shape.is_selected() {
+                shape.rotate_right();
             }
         }
     }
