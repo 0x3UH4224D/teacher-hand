@@ -26,6 +26,7 @@ use cairo;
 
 pub type Point = na::Point2<f64>;
 pub type Vector = na::Vector2<f64>;
+pub type Matrix = na::Matrix2<f64>;
 
 pub type Translation = na::Translation2<f64>;
 pub type Rotation = na::Rotation2<f64>;

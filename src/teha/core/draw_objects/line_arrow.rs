@@ -32,7 +32,7 @@ use gettextrs::*;
 use ncollide::transformation::ToPolyline;
 use ncollide::bounding_volume::BoundingVolume;
 use na;
-use alga::linear::{Transformation, ProjectiveTransformation};
+use alga::linear::{Transformation, ProjectiveTransformation, Similarity};
 
 use core::context::Context;
 use common::types::*;
@@ -1222,6 +1222,58 @@ impl Container for LineArrow {
 
     fn set_children(&mut self, children: Vec<Box<ShapeTrait>>) {
         self.children = children;
+    }
+}
+
+impl Flip for LineArrow {
+    fn flip_vertical(&mut self) {
+        let matrix = Matrix::new(1.0, 0.0, 0.0, -1.0);
+        let mut segment = self.segment.clone();
+        let center = na::center(segment.a(), segment.b());
+        let translate = Translation::new(-center.x, -center.y);
+
+        let mut a = translate.translate_point(segment.a());
+        let mut b = translate.translate_point(segment.b());
+
+        a = matrix * a;
+        a = translate.inverse_transform_point(&a);
+
+        b = matrix * b;
+        b = translate.inverse_transform_point(&b);
+
+        let mut go_dir = matrix * self.go_dir.clone();
+        let mut arrive_dir = matrix * self.arrive_dir.clone();
+
+        segment = Segment::new(a, b);
+
+        self.segment = segment;
+        self.go_dir = go_dir;
+        self.arrive_dir = arrive_dir;
+    }
+
+    fn flip_horizontal(&mut self) {
+        let matrix = Matrix::new(-1.0, 0.0, 0.0, 1.0);
+        let mut segment = self.segment.clone();
+        let center = na::center(segment.a(), segment.b());
+        let translate = Translation::new(-center.x, -center.y);
+
+        let mut a = translate.translate_point(segment.a());
+        let mut b = translate.translate_point(segment.b());
+
+        a = matrix * a;
+        a = translate.inverse_transform_point(&a);
+
+        b = matrix * b;
+        b = translate.inverse_transform_point(&b);
+
+        let mut go_dir = matrix * self.go_dir.clone();
+        let mut arrive_dir = matrix * self.arrive_dir.clone();
+
+        segment = Segment::new(a, b);
+
+        self.segment = segment;
+        self.go_dir = go_dir;
+        self.arrive_dir = arrive_dir;
     }
 }
 

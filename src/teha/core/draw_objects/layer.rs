@@ -31,6 +31,8 @@ use super::*;
 pub trait LayerTrait: Draw + Name + Lock + Visible + Container + Event + Order {
     fn remove_shapes_in_creating_mode(&mut self);
     fn unselect_all_shapes(&mut self);
+    fn flip_selected_children_horizontally(&mut self);
+    fn flip_selected_children_vertically(&mut self);
 }
 
 pub struct Layer {
@@ -91,6 +93,30 @@ impl LayerTrait for Layer {
 
         for shape in self.children.iter_mut() {
             shape.unselect();
+        }
+    }
+
+    fn flip_selected_children_vertically(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        for shape in self.children.iter_mut() {
+            if shape.is_selected() {
+                shape.flip_vertical();
+            }
+        }
+    }
+
+    fn flip_selected_children_horizontally(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+
+        for shape in self.children.iter_mut() {
+            if shape.is_selected() {
+                shape.flip_horizontal();
+            }
         }
     }
 }

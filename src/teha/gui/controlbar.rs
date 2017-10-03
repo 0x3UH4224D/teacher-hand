@@ -164,5 +164,31 @@ impl Controlbar {
                       .move_selected_children_to_rear();
             });
         }
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .flip_horizontal
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .flip_selected_children_horizontally();
+            });
+        }
+
+        {
+            let window = window.clone();
+            controlbar.borrow()
+                      .flip_vertical
+                      .connect_clicked(move |me| {
+                window.borrow_mut()
+                      .get_mut_active_document()
+                      .get_mut_active_page()
+                      .get_mut_active_layer()
+                      .flip_selected_children_vertically();
+            });
+        }
     }
 }
